@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>Portal de Tickets y Turnos - Folios Errores HIT | PCI</title>
   <meta name="description" content="Sistema de gestión de tickets y turnos para atención de errores en folios HIT para Contratistas y Mesa de Control PCI.">
   
@@ -303,8 +306,11 @@
           <div class="flex flex-wrap items-center gap-2 mt-2">
             <span class="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
               <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>Sesión activa: <strong id="nombreResponsableActivoDisplay">--</strong> (<span id="emailResponsableActivoDisplay" class="font-mono text-[11px]">--</span>)</span>
+              <span>Sesión activa: <strong id="nombreResponsableActivoDisplay">Pablo Hernández</strong> (<span id="emailResponsableActivoDisplay" class="font-mono text-[11px]">pahernandez@operacionpci.com.mx</span>)</span>
             </span>
+            <button type="button" onclick="cerrarSesionMesa()" class="px-2 py-0.5 rounded-lg border border-slate-200 text-slate-500 hover:text-rose-600 hover:bg-rose-50 text-[11px] font-medium transition-colors" title="Cambiar a otro responsable">
+              Cambiar usuario
+            </button>
           </div>
         </div>
 
@@ -506,6 +512,6 @@
     <p>Operación PCI • Mesa de Control HIT • Conexión Linkaform API</p>
   </footer>
 
-  <script src="app.js?v=10"></script>
+  <script src="app.js?v=11"></script>
 </body>
 </html>
