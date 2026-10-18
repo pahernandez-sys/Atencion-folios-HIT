@@ -15,10 +15,6 @@ const LINKAFORM_CONFIG = {
     descripcion: '6ace7405cb9c71e698addfc1',
     estatus: '6ab1478e5fe35fa36de6cb23'
   },
-  adminAuth: {
-    username: 'pahernandez@operacionpci.com.mx',
-    api_key: '003ab07a66c6795f8d3fcca2a3b6f94a7f06258e'
-  },
   endpoints: {
     login: 'https://app.linkaform.com/api/infosync/user_admin/login/',
     upload: 'https://app.linkaform.com/api/infosync/cloud_upload/',
@@ -26,8 +22,23 @@ const LINKAFORM_CONFIG = {
   }
 };
 
-// Hash criptográfico SHA-256 del PIN autorizado para la Mesa de Control (PIN: 3546)
-const MESA_CONTROL_PIN_HASH = 'e8743787bbef7d5ffb65a3a13f7c51a90b3ce8b263b94b7bb3aeb7d35b7fa1ad';
+// Configuración de los Responsables de Mesa de Control autorizados
+const RESPONSABLES_CONFIG = [
+  {
+    id: 'pahernandez',
+    nombre: 'Paulina Hernández',
+    email: 'pahernandez@operacionpci.com.mx',
+    apiKey: '003ab07a66c6795f8d3fcca2a3b6f94a7f06258e',
+    pinHash: 'e8743787bbef7d5ffb65a3a13f7c51a90b3ce8b263b94b7bb3aeb7d35b7fa1ad' // PIN: 3546
+  },
+  {
+    id: 'cbautista',
+    nombre: 'Cristina Bautista',
+    email: 'cbautista@operacionpci.com.mx',
+    apiKey: '91ba1499f15482a4410b1d90a174809c52f13b1f',
+    pinHash: '6a95bbab63d587b596398c4bd7e91a132f24032d2007d107e5ea71967724b092' // PIN: 7890
+  }
+];
 
 async function calcularSha256(texto) {
   if (window.crypto && crypto.subtle) {
@@ -36,12 +47,23 @@ async function calcularSha256(texto) {
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   }
-  // Fallback seguro
-  return texto === '3546' ? MESA_CONTROL_PIN_HASH : 'invalido';
+  // Fallbacks seguros
+  if (texto === '3546') return 'e8743787bbef7d5ffb65a3a13f7c51a90b3ce8b263b94b7bb3aeb7d35b7fa1ad';
+  if (texto === '7890') return '6a95bbab63d587b596398c4bd7e91a132f24032d2007d107e5ea71967724b092';
+  return 'invalido';
 }
 
 function estaAutenticadoMesa() {
-  return sessionStorage.getItem('mesa_control_auth') === 'true';
+  const userId = sessionStorage.getItem('mesa_usuario_id');
+  if (userId) {
+    const user = RESPONSABLES_CONFIG.find(r => r.id === userId);
+    if (user) {
+      appState.usuarioActivo = user;
+      return true;
+    }
+  }
+  appState.usuarioActivo = null;
+  return false;
 }
 
 // Estado global de la aplicación
@@ -50,6 +72,7 @@ const appState = {
   selectedFile: null,
   detectedFoliosCount: 0,
   isSubmitting: false,
+  usuarioActivo: null, // Responsable logueado en Mesa de Control
   jwtToken: null,
   todosLosTickets: [],
   ticketsHoy: [],
@@ -126,6 +149,8 @@ const DOM = {
 
   // Auth Mesa de Control
   btnCerrarSesionMesa: document.getElementById('btnCerrarSesionMesa'),
+  nombreResponsableActivoDisplay: document.getElementById('nombreResponsableActivoDisplay'),
+  emailResponsableActivoDisplay: document.getElementById('emailResponsableActivoDisplay'),
   modalAuthMesa: document.getElementById('modalAuthMesa'),
   formAuthMesa: document.getElementById('formAuthMesa'),
   inputPinMesa: document.getElementById('inputPinMesa'),
@@ -175,8 +200,11 @@ function getHoyDateString() {
  */
 async function autenticarLinkaform(force = false) {
   try {
+    const authUser = appState.usuarioActivo || RESPONSABLES_CONFIG[0];
+    const sessionKey = `lkf_jwt_${authUser.id}`;
+
     if (!force) {
-      const cachedJwt = sessionStorage.getItem('lkf_jwt');
+      const cachedJwt = sessionStorage.getItem(sessionKey);
       if (cachedJwt) {
         appState.jwtToken = cachedJwt;
         return cachedJwt;
@@ -186,12 +214,15 @@ async function autenticarLinkaform(force = false) {
     const response = await fetch(LINKAFORM_CONFIG.endpoints.login, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(LINKAFORM_CONFIG.adminAuth)
+      body: JSON.stringify({
+        username: authUser.email,
+        api_key: authUser.apiKey
+      })
     });
 
     if (!response.ok) {
-      console.warn('Fallo al obtener JWT de Linkaform:', response.status);
-      sessionStorage.removeItem('lkf_jwt');
+      console.warn('Fallo al obtener JWT de Linkaform para', authUser.email, response.status);
+      sessionStorage.removeItem(sessionKey);
       appState.jwtToken = null;
       return null;
     }
@@ -199,12 +230,14 @@ async function autenticarLinkaform(force = false) {
     const data = await response.json();
     if (data && data.jwt) {
       appState.jwtToken = data.jwt;
-      sessionStorage.setItem('lkf_jwt', data.jwt);
+      sessionStorage.setItem(sessionKey, data.jwt);
       return data.jwt;
     }
   } catch (err) {
     console.error('Error de red en autenticarLinkaform:', err);
-    sessionStorage.removeItem('lkf_jwt');
+    if (appState.usuarioActivo) {
+      sessionStorage.removeItem(`lkf_jwt_${appState.usuarioActivo.id}`);
+    }
     appState.jwtToken = null;
   }
   return null;
@@ -528,16 +561,21 @@ function setupEventListeners() {
     DOM.btnExportarExcel.addEventListener('click', exportarHistoricoExcel);
   }
 
-  // Eventos de Autenticación de Mesa de Control (PIN: 3546)
+  // Eventos de Autenticación de Mesa de Control (PIN 3546 o 7890)
   if (DOM.formAuthMesa) {
     DOM.formAuthMesa.addEventListener('submit', async (e) => {
       e.preventDefault();
       const pinIngresado = DOM.inputPinMesa.value.trim();
       const hash = await calcularSha256(pinIngresado);
 
-      if (hash === MESA_CONTROL_PIN_HASH) {
-        sessionStorage.setItem('mesa_control_auth', 'true');
+      const responsable = RESPONSABLES_CONFIG.find(r => r.pinHash === hash || (pinIngresado === '3546' && r.id === 'pahernandez') || (pinIngresado === '7890' && r.id === 'cbautista'));
+
+      if (responsable) {
+        sessionStorage.setItem('mesa_usuario_id', responsable.id);
+        appState.usuarioActivo = responsable;
         cerrarModalAuthMesa();
+        // Iniciar sesión en Linkaform con la cuenta de este responsable
+        await autenticarLinkaform(true);
         cambiarPestana('responsable');
       } else {
         DOM.errorPinMesa.classList.remove('hidden');
@@ -579,11 +617,14 @@ function cerrarModalAuthMesa() {
 }
 
 function cerrarSesionMesa() {
-  sessionStorage.removeItem('mesa_control_auth');
+  sessionStorage.removeItem('mesa_usuario_id');
+  appState.usuarioActivo = null;
+  appState.jwtToken = null;
   if (DOM.btnCerrarSesionMesa) {
     DOM.btnCerrarSesionMesa.classList.add('hidden');
   }
   cambiarPestana('contratista');
+  autenticarLinkaform();
 }
 
 /**
@@ -618,6 +659,7 @@ function exportarHistoricoExcel() {
       'Folio Linkaform': t.folio || t.id,
       'Fecha Creación': fechaStr,
       'Estatus': estatus,
+      'Atendido Por': t.updated_by_name || t.updated_by_email || (estatus === 'Finalizado' ? 'Sin registrar' : 'Pendiente'),
       'Contratista': (nombre && nombre !== 'None' && nombre.trim() !== '') ? nombre : (email || 'Sin especificar'),
       'Teléfono': tel,
       'Correo': email,
@@ -1008,6 +1050,12 @@ function renderizarVistaResponsable() {
   if (DOM.metricTotalHoy) DOM.metricTotalHoy.textContent = totalHoy;
   if (DOM.subtextFoliosHoy) DOM.subtextFoliosHoy.textContent = `Folios de hoy: ${foliosHoySum}`;
 
+  // Mostrar datos del responsable activo en sesión
+  if (appState.usuarioActivo) {
+    if (DOM.nombreResponsableActivoDisplay) DOM.nombreResponsableActivoDisplay.textContent = appState.usuarioActivo.nombre;
+    if (DOM.emailResponsableActivoDisplay) DOM.emailResponsableActivoDisplay.textContent = appState.usuarioActivo.email;
+  }
+
   actualizarEstilosFiltros();
 
   // Filtrado de la lista según botón
@@ -1110,6 +1158,12 @@ function renderizarVistaResponsable() {
             <span class="px-2 py-0.5 rounded-full text-[11px] font-bold ${esFinalizado ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800 animate-pulse'}">
               ${esFinalizado ? '✓ Atendido / Finalizado' : '⚡ Pendiente / En Progreso'}
             </span>
+
+            ${esFinalizado && (ticket.updated_by_name || ticket.updated_by_email) ? `
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                👤 Atendido por: <strong>${ticket.updated_by_name || ticket.updated_by_email}</strong>
+              </span>
+            ` : ''}
           </div>
 
           <!-- Datos del Contratista -->
@@ -1184,15 +1238,22 @@ function renderizarVistaResponsable() {
  * Función ejecutada cuando la Responsable hace clic en "Finalizar y Notificar"
  */
 window.finalizarTicketDesdeWeb = async function(recordId) {
-  if (!confirm('¿Deseas marcar este ticket como FINALIZADO? Linkaform enviará automáticamente la notificación por correo al contratista.')) {
+  if (!estaAutenticadoMesa() || !appState.usuarioActivo) {
+    alert('Sesión no identificada. Por favor vuelve a ingresar a Mesa de Control con tu PIN.');
+    cambiarPestana('contratista');
     return;
   }
 
-  mostrarLoading('Finalizando Ticket...', 'Actualizando estatus en Linkaform y enviando correo...');
+  const responsable = appState.usuarioActivo;
+  if (!confirm(`¿Deseas marcar este ticket como FINALIZADO?\n\nResponsable que atiende: ${responsable.nombre} (${responsable.email})\nLinkaform registrará que tú atendiste esta incidencia y enviará la notificación por correo al contratista.`)) {
+    return;
+  }
+
+  mostrarLoading('Finalizando Ticket...', `Actualizando estatus en Linkaform como ${responsable.nombre} y enviando correo...`);
 
   try {
     if (!appState.jwtToken) {
-      await autenticarLinkaform();
+      await autenticarLinkaform(true);
     }
 
     // 1. Obtener datos actuales del registro
@@ -1243,7 +1304,7 @@ window.finalizarTicketDesdeWeb = async function(recordId) {
     ocultarLoading();
 
     const contratistaEmail = answersActuales[LINKAFORM_CONFIG.fieldIds.email] || '';
-    alert(`¡Ticket Finalizado con éxito!\n\nSe ha actualizado en Linkaform y se disparó el correo automático a: ${contratistaEmail}`);
+    alert(`¡Ticket Finalizado con éxito!\n\nRegistrado en Linkaform por: ${responsable.nombre} (${responsable.email})\nSe disparó el correo automático a: ${contratistaEmail}`);
 
   } catch (err) {
     console.error('Error al finalizar ticket:', err);

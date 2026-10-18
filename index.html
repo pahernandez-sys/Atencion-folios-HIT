@@ -300,6 +300,12 @@
           <p class="text-xs text-slate-500">
             Revisa los folios de cada contratista, añade comentarios si es necesario y finaliza el ticket para enviar el correo automático.
           </p>
+          <div class="flex flex-wrap items-center gap-2 mt-2">
+            <span class="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+              <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span>Sesión activa: <strong id="nombreResponsableActivoDisplay">--</strong> (<span id="emailResponsableActivoDisplay" class="font-mono text-[11px]">--</span>)</span>
+            </span>
+          </div>
         </div>
 
         <!-- Indicador de Turno Actual y Acciones de la Responsable -->
@@ -466,7 +472,7 @@
       <div class="space-y-1">
         <h3 class="text-lg font-bold text-slate-900">Acceso a Mesa de Control</h3>
         <p class="text-xs text-slate-500">
-          Módulo exclusivo para la responsable de atención a folios HIT. Ingresa el PIN de seguridad para continuar.
+          Módulo exclusivo para responsables (P. Hernández o C. Bautista). Ingresa tu PIN asignado para gestionar con tu usuario en Linkaform.
         </p>
       </div>
 
@@ -481,7 +487,7 @@
 
         <p id="errorPinMesa" class="text-xs text-rose-600 font-semibold hidden flex items-center justify-center space-x-1">
           <i data-lucide="alert-circle" class="w-3.5 h-3.5 shrink-0"></i>
-          <span>PIN incorrecto. Intenta nuevamente.</span>
+          <span>PIN incorrecto. Ingresa el PIN asignado a tu usuario.</span>
         </p>
 
         <div class="flex items-center space-x-2 pt-2">
@@ -500,6 +506,6 @@
     <p>Operación PCI • Mesa de Control HIT • Conexión Linkaform API</p>
   </footer>
 
-  <script src="app.js?v=8"></script>
+  <script src="app.js?v=9"></script>
 </body>
 </html>
