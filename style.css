@@ -1,0 +1,32 @@
+/* Estilos complementarios y animaciones para el Portal de Tickets y Turnos HIT */
+
+@keyframes scaleUp {
+  0% {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-scale-up {
+  animation: scaleUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Transiciones suaves en campos y botones */
+input, textarea, button, a {
+  transition: all 0.15s ease-in-out;
+}
+
+/* Estilo para drag and drop activo */
+.drag-over {
+  border-color: #1e64d4 !important;
+  background-color: #eef6ff !important;
+}
+
+/* Efecto de foco en inputs */
+input:focus, textarea:focus {
+  box-shadow: 0 0 0 3px rgba(30, 100, 212, 0.12);
+}

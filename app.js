@@ -1,0 +1,963 @@
+/**
+ * Portal de Tickets y Turnos - Folios Errores HIT
+ * Gestión Dual: Contratistas & Responsable de Mesa de Control PCI
+ * Conexión completa con Linkaform API
+ */
+
+const LINKAFORM_CONFIG = {
+  formId: 179149,
+  fieldIds: {
+    nombre: '6ab1478e5fe35fa36de6cb1e',
+    telefono: '6ab1478e5fe35fa36de6cb1f',
+    email: '6ab599c75e02297c1d2a03df',
+    excel: '6ab1478e5fe35fa36de6cb21',
+    numeroFolios: '6abc1b54d480ac87e62ccc17',
+    descripcion: '6ace7405cb9c71e698addfc1',
+    estatus: '6ab1478e5fe35fa36de6cb23'
+  },
+  adminAuth: {
+    username: 'pahernandez@operacionpci.com.mx',
+    apiKey: '003ab07a66c6795f8d3fcca2a3b6f94a7f06258e'
+  },
+  endpoints: {
+    login: 'https://app.linkaform.com/api/infosync/user_admin/login/',
+    upload: 'https://app.linkaform.com/api/infosync/cloud_upload/',
+    formAnswer: 'https://app.linkaform.com/api/infosync/form_answer/'
+  }
+};
+
+// Estado global de la aplicación
+const appState = {
+  activeTab: 'contratista', // 'contratista' | 'responsable'
+  selectedFile: null,
+  detectedFoliosCount: 0,
+  isSubmitting: false,
+  jwtToken: null,
+  todosLosTickets: [],
+  ticketsHoy: [],
+  filtroResponsable: 'pendientes', // 'pendientes' | 'todos' | 'historico'
+  responsableTurnoActual: 1
+};
+
+// Elementos del DOM
+const DOM = {
+  tabContratista: document.getElementById('tabContratista'),
+  tabResponsable: document.getElementById('tabResponsable'),
+  badgePendientesHeader: document.getElementById('badgePendientesHeader'),
+  vistaContratista: document.getElementById('vistaContratista'),
+  vistaResponsable: document.getElementById('vistaResponsable'),
+  fileProtocolBanner: document.getElementById('fileProtocolBanner'),
+  
+  // Tablero de Turnos (Contratista)
+  fechaActualDisplay: document.getElementById('fechaActualDisplay'),
+  turnoActualAtencionDisplay: document.getElementById('turnoActualAtencionDisplay'),
+  ultimoTurnoEmitidoDisplay: document.getElementById('ultimoTurnoEmitidoDisplay'),
+  tuTurnoDisplay: document.getElementById('tuTurnoDisplay'),
+  tuTurnoEstadoSubtext: document.getElementById('tuTurnoEstadoSubtext'),
+  btnRecargarTurnos: document.getElementById('btnRecargarTurnos'),
+
+  // Formulario Contratista
+  formContratista: document.getElementById('formContratista'),
+  nombre: document.getElementById('nombre'),
+  telefono: document.getElementById('telefono'),
+  email: document.getElementById('email'),
+  excelFile: document.getElementById('excelFile'),
+  dropZone: document.getElementById('dropZone'),
+  dropPrompt: document.getElementById('dropPrompt'),
+  fileSelectedInfo: document.getElementById('fileSelectedInfo'),
+  fileNameDisplay: document.getElementById('fileNameDisplay'),
+  fileSizeDisplay: document.getElementById('fileSizeDisplay'),
+  removeFileBtn: document.getElementById('removeFileBtn'),
+  autoCountNotice: document.getElementById('autoCountNotice'),
+  autoCountBadge: document.getElementById('autoCountBadge'),
+  btnSubmitContratista: document.getElementById('btnSubmitContratista'),
+  nombreError: document.getElementById('nombreError'),
+  telefonoError: document.getElementById('telefonoError'),
+  emailError: document.getElementById('emailError'),
+  fileError: document.getElementById('fileError'),
+
+  // Vista Responsable
+  responsableTurnoActualText: document.getElementById('responsableTurnoActualText'),
+  btnAvanzarTurno: document.getElementById('btnAvanzarTurno'),
+  btnRecargarLista: document.getElementById('btnRecargarLista'),
+  metricTotalHoy: document.getElementById('metricTotalHoy'),
+  metricPendientesHoy: document.getElementById('metricPendientesHoy'),
+  metricFinalizadosHoy: document.getElementById('metricFinalizadosHoy'),
+  metricTotalFoliosHoy: document.getElementById('metricTotalFoliosHoy'),
+  filtroSoloPendientes: document.getElementById('filtroSoloPendientes'),
+  filtroTodos: document.getElementById('filtroTodos'),
+  filtroHistorico: document.getElementById('filtroHistorico'),
+  ticketsContainer: document.getElementById('ticketsContainer'),
+
+  // Modales
+  loadingModal: document.getElementById('loadingModal'),
+  loadingTitle: document.getElementById('loadingTitle'),
+  loadingMessage: document.getElementById('loadingMessage'),
+  successModal: document.getElementById('successModal'),
+  modalTurnoDisplay: document.getElementById('modalTurnoDisplay'),
+  modalTurnoActualResponsable: document.getElementById('modalTurnoActualResponsable'),
+  modalFolioDisplay: document.getElementById('modalFolioDisplay'),
+  modalEmailDisplay: document.getElementById('modalEmailDisplay'),
+  modalCerrarBtn: document.getElementById('modalCerrarBtn')
+};
+
+// Inicialización de la aplicación
+document.addEventListener('DOMContentLoaded', async () => {
+  if (window.lucide) window.lucide.createIcons();
+  
+  verificarProtocolo();
+  inicializarFecha();
+  setupEventListeners();
+  recuperarMiTurnoLocal();
+
+  // Iniciar sesión y sincronizar tickets desde Linkaform
+  await sincronizarTicketsYTurnos();
+
+  // Actualización automática periódica cada 20 segundos
+  setInterval(async () => {
+    await sincronizarTicketsYTurnos(true);
+  }, 20000);
+});
+
+function verificarProtocolo() {
+  if (window.location.protocol === 'file:' && DOM.fileProtocolBanner) {
+    DOM.fileProtocolBanner.classList.remove('hidden');
+  }
+}
+
+function inicializarFecha() {
+  const hoy = new Date();
+  const opciones = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+  DOM.fechaActualDisplay.textContent = hoy.toLocaleDateString('es-MX', opciones);
+}
+
+function getHoyDateString() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Autenticación silenciosa en Linkaform con credenciales de administración
+ */
+async function autenticarLinkaform() {
+  try {
+    const cachedJwt = sessionStorage.getItem('lkf_jwt');
+    if (cachedJwt) {
+      appState.jwtToken = cachedJwt;
+      return cachedJwt;
+    }
+
+    const response = await fetch(LINKAFORM_CONFIG.endpoints.login, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(LINKAFORM_CONFIG.adminAuth)
+    });
+
+    if (!response.ok) {
+      console.warn('Fallo al obtener JWT de Linkaform:', response.status);
+      return null;
+    }
+
+    const data = await response.json();
+    if (data.jwt) {
+      appState.jwtToken = data.jwt;
+      sessionStorage.setItem('lkf_jwt', data.jwt);
+      return data.jwt;
+    }
+  } catch (err) {
+    console.error('Error de red en autenticarLinkaform:', err);
+  }
+  return null;
+}
+
+/**
+ * Sincroniza la lista de tickets desde Linkaform y calcula los turnos de manera determinista
+ */
+async function sincronizarTicketsYTurnos(silencioso = false) {
+  if (!appState.jwtToken) {
+    await autenticarLinkaform();
+  }
+  if (!appState.jwtToken) {
+    if (appState.activeTab === 'responsable') {
+      renderizarVistaResponsable();
+    }
+    return;
+  }
+
+  try {
+    const response = await fetch(`${LINKAFORM_CONFIG.endpoints.formAnswer}?form_id=${LINKAFORM_CONFIG.formId}&limit=100`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${appState.jwtToken}`
+      }
+    });
+
+    if (!response.ok) {
+      if (response.status === 440 || response.status === 401) {
+        sessionStorage.removeItem('lkf_jwt');
+        appState.jwtToken = null;
+        await autenticarLinkaform();
+      }
+      return;
+    }
+
+    const data = await response.json();
+    const records = data.objects || [];
+    appState.todosLosTickets = records;
+
+    // Identificar los tickets de hoy
+    const hoyStr = getHoyDateString();
+    const recordsHoy = records.filter(r => {
+      if (!r.created_at) return false;
+      const recDate = new Date(r.created_at * 1000);
+      const recDateStr = `${recDate.getFullYear()}-${String(recDate.getMonth() + 1).padStart(2, '0')}-${String(recDate.getDate()).padStart(2, '0')}`;
+      return recDateStr === hoyStr;
+    });
+
+    // Ordenar de más antiguo a más nuevo para asignar Turno 1, Turno 2...
+    recordsHoy.sort((a, b) => a.created_at - b.created_at);
+
+    // Asignar número de turno secuencial del día a cada ticket de hoy
+    recordsHoy.forEach((r, idx) => {
+      r.turnoDia = idx + 1;
+    });
+
+    // Para tickets anteriores sin turno de hoy, marcar su turno como previo
+    records.forEach(r => {
+      if (!r.turnoDia) {
+        r.turnoDia = 'Ant';
+      }
+    });
+
+    appState.ticketsHoy = recordsHoy;
+
+    // Actualizar métricas y tablero de turnos
+    actualizarTableroTurnos();
+    if (appState.activeTab === 'responsable') {
+      renderizarVistaResponsable();
+    }
+
+  } catch (err) {
+    if (!silencioso) console.error('Error al sincronizar tickets:', err);
+  }
+}
+
+/**
+ * Actualiza el tablero de turnos (visible para contratistas)
+ */
+function actualizarTableroTurnos() {
+  if (!appState.jwtToken && window.location.protocol === 'file:') {
+    DOM.turnoActualAtencionDisplay.textContent = '--';
+    DOM.ultimoTurnoEmitidoDisplay.textContent = '--';
+    DOM.tuTurnoEstadoSubtext.innerHTML = '<span class="text-amber-300">Abre <a href="http://localhost:8000" class="underline font-bold">http://localhost:8000</a></span>';
+    return;
+  }
+
+  const tickets = appState.ticketsHoy;
+  const totalHoy = tickets.length;
+  DOM.ultimoTurnoEmitidoDisplay.textContent = totalHoy;
+
+  // Encontrar el primer turno pendiente (estatus != 'finalizado')
+  const primerPendiente = tickets.find(t => {
+    const st = String(t.answers[LINKAFORM_CONFIG.fieldIds.estatus] || '').toLowerCase();
+    return st !== 'finalizado';
+  });
+
+  let turnoEnAtencion = '--';
+  if (primerPendiente) {
+    turnoEnAtencion = primerPendiente.turnoDia;
+    appState.responsableTurnoActual = primerPendiente.turnoDia;
+  } else if (totalHoy > 0) {
+    turnoEnAtencion = 'Todos Finalizados';
+    appState.responsableTurnoActual = totalHoy;
+  }
+
+  DOM.turnoActualAtencionDisplay.textContent = turnoEnAtencion;
+  DOM.responsableTurnoActualText.textContent = turnoEnAtencion !== '--' ? `#${turnoEnAtencion}` : '--';
+
+  // Total de tickets pendientes (incluyendo hoy y anteriores)
+  const pendientesTotal = appState.todosLosTickets.filter(t => {
+    const st = String(t.answers[LINKAFORM_CONFIG.fieldIds.estatus] || '').toLowerCase();
+    return st !== 'finalizado';
+  }).length;
+
+  if (pendientesTotal > 0) {
+    DOM.badgePendientesHeader.textContent = pendientesTotal;
+    DOM.badgePendientesHeader.classList.remove('hidden');
+  } else {
+    DOM.badgePendientesHeader.classList.add('hidden');
+  }
+
+  // Refrescar estado de "Tu Turno Actual"
+  recuperarMiTurnoLocal();
+}
+
+/**
+ * Consulta en localStorage si el contratista ya pidió turno el día de hoy
+ */
+function recuperarMiTurnoLocal() {
+  const hoyStr = getHoyDateString();
+  const turnoGuardado = localStorage.getItem(`mi_turno_${hoyStr}`);
+  const folioGuardado = localStorage.getItem(`mi_folio_${hoyStr}`);
+
+  if (turnoGuardado) {
+    DOM.tuTurnoDisplay.textContent = turnoGuardado;
+    
+    const turnoNum = parseInt(turnoGuardado, 10);
+    const turnoActualNum = parseInt(appState.responsableTurnoActual, 10);
+
+    const miTicket = appState.ticketsHoy.find(t => t.folio === folioGuardado || t.turnoDia === turnoNum);
+    const estatus = miTicket ? String(miTicket.answers[LINKAFORM_CONFIG.fieldIds.estatus] || '').toLowerCase() : '';
+
+    if (estatus === 'finalizado') {
+      DOM.tuTurnoEstadoSubtext.innerHTML = '<span class="text-emerald-300 font-bold">✓ Tu turno fue Finalizado</span>';
+    } else if (turnoActualNum === turnoNum) {
+      DOM.tuTurnoEstadoSubtext.innerHTML = '<span class="text-amber-300 font-bold animate-pulse">⚡ Tu turno está siendo atendido</span>';
+    } else if (turnoActualNum < turnoNum) {
+      const restantes = turnoNum - turnoActualNum;
+      DOM.tuTurnoEstadoSubtext.textContent = `En espera (${restantes} turno${restantes > 1 ? 's' : ''} antes de ti)`;
+    } else {
+      DOM.tuTurnoEstadoSubtext.textContent = 'En espera de resolución';
+    }
+  } else {
+    DOM.tuTurnoDisplay.textContent = '--';
+    DOM.tuTurnoEstadoSubtext.textContent = 'Sin turno activo hoy';
+  }
+}
+
+/**
+ * Configuración de Eventos de la Interfaz
+ */
+function setupEventListeners() {
+  // Cambio de Pestañas (Contratista vs Responsable)
+  DOM.tabContratista.addEventListener('click', () => cambiarPestana('contratista'));
+  DOM.tabResponsable.addEventListener('click', () => cambiarPestana('responsable'));
+
+  // Manejo de archivo Excel del Contratista
+  DOM.excelFile.addEventListener('change', handleFileSelect);
+  DOM.removeFileBtn.addEventListener('click', resetFileState);
+
+  // Drag & drop en dropZone
+  ['dragenter', 'dragover'].forEach(eventName => {
+    DOM.dropZone.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      DOM.dropZone.classList.add('drag-over');
+    });
+  });
+
+  ['dragleave', 'drop'].forEach(eventName => {
+    DOM.dropZone.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      DOM.dropZone.classList.remove('drag-over');
+    });
+  });
+
+  // Filtro de sólo dígitos en teléfono
+  DOM.telefono.addEventListener('input', (e) => {
+    e.target.value = e.target.value.replace(/\D/g, '').slice(0, 10);
+  });
+
+  // Envío del Formulario Contratista
+  DOM.formContratista.addEventListener('submit', handleFormSubmitContratista);
+
+  // Actualizar Turnos manual
+  DOM.btnRecargarTurnos.addEventListener('click', async () => {
+    await sincronizarTicketsYTurnos();
+  });
+
+  // Cerrar Modal de Éxito
+  DOM.modalCerrarBtn.addEventListener('click', () => {
+    DOM.successModal.classList.add('hidden');
+    DOM.formContratista.reset();
+    resetFileState();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  // Botones de la Responsable
+  DOM.btnRecargarLista.addEventListener('click', async () => {
+    await sincronizarTicketsYTurnos();
+  });
+
+  DOM.btnAvanzarTurno.addEventListener('click', async () => {
+    const siguiente = appState.ticketsHoy.find(t => {
+      const st = String(t.answers[LINKAFORM_CONFIG.fieldIds.estatus] || '').toLowerCase();
+      return st !== 'finalizado' && t.turnoDia > appState.responsableTurnoActual;
+    });
+    if (siguiente) {
+      appState.responsableTurnoActual = siguiente.turnoDia;
+      actualizarTableroTurnos();
+    } else {
+      alert('No hay más turnos pendientes por atender hoy.');
+    }
+  });
+
+  // Filtros de la Responsable
+  DOM.filtroSoloPendientes.addEventListener('click', () => {
+    appState.filtroResponsable = 'pendientes';
+    actualizarEstilosFiltros();
+    renderizarVistaResponsable();
+  });
+
+  DOM.filtroTodos.addEventListener('click', () => {
+    appState.filtroResponsable = 'todos';
+    actualizarEstilosFiltros();
+    renderizarVistaResponsable();
+  });
+
+  if (DOM.filtroHistorico) {
+    DOM.filtroHistorico.addEventListener('click', () => {
+      appState.filtroResponsable = 'historico';
+      actualizarEstilosFiltros();
+      renderizarVistaResponsable();
+    });
+  }
+}
+
+function actualizarEstilosFiltros() {
+  const activoClass = 'px-3 py-1 rounded-lg text-xs font-semibold bg-brand-50 text-brand-700 border border-brand-200 transition-colors';
+  const inactivoClass = 'px-3 py-1 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors';
+
+  DOM.filtroSoloPendientes.className = appState.filtroResponsable === 'pendientes' ? activoClass : inactivoClass;
+  DOM.filtroTodos.className = appState.filtroResponsable === 'todos' ? activoClass : inactivoClass;
+  if (DOM.filtroHistorico) {
+    DOM.filtroHistorico.className = appState.filtroResponsable === 'historico' ? activoClass : inactivoClass;
+  }
+}
+
+function cambiarPestana(tab) {
+  appState.activeTab = tab;
+  if (tab === 'contratista') {
+    DOM.vistaContratista.classList.remove('hidden');
+    DOM.vistaResponsable.classList.add('hidden');
+    DOM.tabContratista.className = 'px-3.5 py-1.5 rounded-lg bg-white text-brand-700 shadow-xs font-semibold flex items-center space-x-1.5 transition-all';
+    DOM.tabResponsable.className = 'px-3.5 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 flex items-center space-x-1.5 transition-all';
+  } else {
+    DOM.vistaContratista.classList.add('hidden');
+    DOM.vistaResponsable.classList.remove('hidden');
+    DOM.tabResponsable.className = 'px-3.5 py-1.5 rounded-lg bg-white text-brand-700 shadow-xs font-semibold flex items-center space-x-1.5 transition-all';
+    DOM.tabContratista.className = 'px-3.5 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 flex items-center space-x-1.5 transition-all';
+    sincronizarTicketsYTurnos();
+    renderizarVistaResponsable();
+  }
+  if (window.lucide) window.lucide.createIcons();
+}
+
+/**
+ * Manejo y Lectura del Archivo Excel (Conteo automático con encabezado y 1 folio por fila)
+ */
+function handleFileSelect(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const validExts = ['.xlsx', '.xls'];
+  const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+  if (!validExts.includes(ext)) {
+    showFileError('Formato no válido. Debe ser un archivo .xlsx o .xls');
+    return;
+  }
+
+  hideFileError();
+  appState.selectedFile = file;
+
+  DOM.fileNameDisplay.textContent = file.name;
+  DOM.fileSizeDisplay.textContent = formatFileSize(file.size);
+  DOM.dropPrompt.classList.add('hidden');
+  DOM.fileSelectedInfo.classList.remove('hidden');
+
+  // Leer Excel con SheetJS
+  const reader = new FileReader();
+  reader.onload = (evt) => {
+    try {
+      const data = new Uint8Array(evt.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rawRows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' });
+
+      if (!rawRows || rawRows.length < 2) {
+        showFileError('El archivo debe tener al menos una fila de encabezado y una fila con folio.');
+        appState.detectedFoliosCount = 0;
+        return;
+      }
+
+      // Regla de negocio: 1 folio por fila, omitiendo la fila 0 (encabezado)
+      let count = 0;
+      for (let i = 1; i < rawRows.length; i++) {
+        const tieneDato = rawRows[i].some(celda => celda !== null && celda !== undefined && String(celda).trim() !== '');
+        if (tieneDato) count++;
+      }
+
+      if (count === 0) {
+        showFileError('No se encontraron filas con folios válidos debajo del encabezado.');
+        appState.detectedFoliosCount = 0;
+        return;
+      }
+
+      appState.detectedFoliosCount = count;
+      DOM.autoCountBadge.textContent = `${count} folio${count > 1 ? 's' : ''}`;
+      DOM.autoCountNotice.classList.remove('hidden');
+      if (window.lucide) window.lucide.createIcons();
+
+    } catch (err) {
+      console.error('Error al parsear Excel:', err);
+      showFileError('No se pudo leer el archivo Excel.');
+      appState.detectedFoliosCount = 0;
+    }
+  };
+
+  reader.readAsArrayBuffer(file);
+}
+
+function resetFileState() {
+  appState.selectedFile = null;
+  appState.detectedFoliosCount = 0;
+  DOM.excelFile.value = '';
+  DOM.dropPrompt.classList.remove('hidden');
+  DOM.fileSelectedInfo.classList.add('hidden');
+  DOM.autoCountNotice.classList.add('hidden');
+  hideFileError();
+}
+
+function showFileError(msg) {
+  DOM.fileError.textContent = msg;
+  DOM.fileError.classList.remove('hidden');
+}
+
+function hideFileError() {
+  DOM.fileError.classList.add('hidden');
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+/**
+ * Validaciones para el formulario del Contratista (4 campos requeridos)
+ */
+function validarFormularioContratista() {
+  let ok = true;
+
+  if (DOM.nombre.value.trim().length < 3) {
+    DOM.nombreError.classList.remove('hidden');
+    DOM.nombre.classList.add('border-rose-400');
+    ok = false;
+  } else {
+    DOM.nombreError.classList.add('hidden');
+    DOM.nombre.classList.remove('border-rose-400');
+  }
+
+  if (!/^\d{10}$/.test(DOM.telefono.value.trim())) {
+    DOM.telefonoError.classList.remove('hidden');
+    DOM.telefono.classList.add('border-rose-400');
+    ok = false;
+  } else {
+    DOM.telefonoError.classList.add('hidden');
+    DOM.telefono.classList.remove('border-rose-400');
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(DOM.email.value.trim())) {
+    DOM.emailError.classList.remove('hidden');
+    DOM.email.classList.add('border-rose-400');
+    ok = false;
+  } else {
+    DOM.emailError.classList.add('hidden');
+    DOM.email.classList.remove('border-rose-400');
+  }
+
+  if (!appState.selectedFile || appState.detectedFoliosCount === 0) {
+    showFileError('Debes adjuntar un archivo Excel con encabezado y al menos un folio.');
+    ok = false;
+  } else {
+    hideFileError();
+  }
+
+  return ok;
+}
+
+/**
+ * Envío del ticket del contratista a Linkaform
+ */
+async function handleFormSubmitContratista(e) {
+  e.preventDefault();
+
+  if (appState.isSubmitting) return;
+  if (!validarFormularioContratista()) return;
+
+  appState.isSubmitting = true;
+  DOM.btnSubmitContratista.disabled = true;
+
+  mostrarLoading('Cargando Archivo...', 'Subiendo archivo Excel a Linkaform...');
+
+  try {
+    // 1. Cargar archivo multipart a Linkaform
+    const formData = new FormData();
+    formData.append('File', appState.selectedFile);
+    formData.append('field_id', LINKAFORM_CONFIG.fieldIds.excel);
+    formData.append('form_id', LINKAFORM_CONFIG.formId);
+
+    const uploadRes = await fetch(LINKAFORM_CONFIG.endpoints.upload, {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!uploadRes.ok) {
+      throw new Error(`Error en subida de archivo (${uploadRes.status})`);
+    }
+
+    const uploadData = await uploadRes.json();
+    if (!uploadData || !uploadData.file) {
+      throw new Error('No se recibió la URL del archivo desde Linkaform.');
+    }
+
+    // 2. Crear Registro en Linkaform
+    actualizarLoading('Generando Ticket...', 'Registrando incidencia y asignando turno...');
+
+    const payload = {
+      form_id: LINKAFORM_CONFIG.formId,
+      geolocation: [],
+      answers: {
+        [LINKAFORM_CONFIG.fieldIds.nombre]: DOM.nombre.value.trim(),
+        [LINKAFORM_CONFIG.fieldIds.telefono]: DOM.telefono.value.trim(),
+        [LINKAFORM_CONFIG.fieldIds.email]: DOM.email.value.trim(),
+        [LINKAFORM_CONFIG.fieldIds.excel]: [
+          {
+            file_name: uploadData.file_name || appState.selectedFile.name,
+            file_url: uploadData.file
+          }
+        ],
+        [LINKAFORM_CONFIG.fieldIds.numeroFolios]: appState.detectedFoliosCount,
+        [LINKAFORM_CONFIG.fieldIds.descripcion]: 'Incidencia reportada por contratista.',
+        [LINKAFORM_CONFIG.fieldIds.estatus]: 'en_progreso'
+      }
+    };
+
+    const submitRes = await fetch(LINKAFORM_CONFIG.endpoints.formAnswer, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!submitRes.ok) {
+      const errTxt = await submitRes.text();
+      throw new Error(`Error al registrar en Linkaform (${submitRes.status}): ${errTxt}`);
+    }
+
+    const createdRecord = await submitRes.json();
+    const folioAsignado = createdRecord.folio || createdRecord.id || 'Registrado';
+
+    // 3. Sincronizar tickets y calcular el Turno asignado
+    await sincronizarTicketsYTurnos(true);
+
+    const miTurnoNum = appState.ticketsHoy.length || 1;
+    const hoyStr = getHoyDateString();
+    
+    // Guardar mi turno en localStorage para el día de hoy
+    localStorage.setItem(`mi_turno_${hoyStr}`, miTurnoNum);
+    localStorage.setItem(`mi_folio_${hoyStr}`, folioAsignado);
+
+    ocultarLoading();
+
+    // Mostrar modal con el Turno del día
+    DOM.modalTurnoDisplay.textContent = miTurnoNum;
+    DOM.modalTurnoActualResponsable.textContent = appState.responsableTurnoActual || '1';
+    DOM.modalFolioDisplay.textContent = folioAsignado;
+    DOM.modalEmailDisplay.textContent = DOM.email.value.trim();
+    DOM.successModal.classList.remove('hidden');
+
+    actualizarTableroTurnos();
+
+  } catch (err) {
+    console.error('Fallo en el registro:', err);
+    ocultarLoading();
+
+    if (window.location.protocol === 'file:' || (err.message && err.message.toLowerCase().includes('fetch'))) {
+      alert(`⚠️ Restricción de seguridad del navegador (CORS):\n\nHas abierto el archivo directamente como "file://".\nLos navegadores bloquean peticiones a servidores externos por seguridad.\n\n👉 SOLUCIÓN:\nAbre la página en http://localhost:8000 o ejecuta 'iniciar_servidor_local.bat'.`);
+    } else {
+      alert(`Ocurrió un error: ${err.message || 'Error de conexión'}. Por favor intenta nuevamente.`);
+    }
+  } finally {
+    appState.isSubmitting = false;
+    DOM.btnSubmitContratista.disabled = false;
+  }
+}
+
+/**
+ * RENDERIZADO DE LA VISTA DE LA RESPONSABLE (MESA DE CONTROL)
+ */
+function renderizarVistaResponsable() {
+  if (!appState.jwtToken) {
+    DOM.metricTotalHoy.textContent = '--';
+    DOM.metricPendientesHoy.textContent = '--';
+    DOM.metricFinalizadosHoy.textContent = '--';
+    DOM.metricTotalFoliosHoy.textContent = '--';
+
+    DOM.ticketsContainer.innerHTML = `
+      <div class="p-8 text-center text-amber-900 bg-amber-50 rounded-2xl m-6 border border-amber-200 shadow-xs space-y-3">
+        <div class="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto text-amber-600">
+          <i data-lucide="shield-alert" class="w-6 h-6"></i>
+        </div>
+        <h3 class="font-bold text-base text-amber-900">Restricción de Seguridad del Navegador (Modo file://)</h3>
+        <p class="text-xs text-amber-800 max-w-lg mx-auto leading-relaxed">
+          Has abierto el sistema directamente como un archivo local (<code>file:///...</code>). Los navegadores (Chrome, Edge) bloquean la consulta de tickets desde la API de Linkaform cuando no se ejecuta sobre un servidor web.
+        </p>
+        <div class="pt-2">
+          <a href="http://localhost:8000" class="inline-flex items-center space-x-2 px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl text-xs transition-colors shadow-sm">
+            <i data-lucide="external-link" class="w-4 h-4"></i>
+            <span>Abrir en Servidor Local (http://localhost:8000)</span>
+          </a>
+        </div>
+        <p class="text-[11px] text-amber-700/80">
+          O ejecuta el archivo <strong>iniciar_servidor_local.bat</strong>. Al publicarlo en <strong>GitHub Pages</strong> funcionará directamente sin necesidad de servidores locales.
+        </p>
+      </div>
+    `;
+    if (window.lucide) window.lucide.createIcons();
+    return;
+  }
+
+  const ticketsHoy = appState.ticketsHoy;
+  const todosTickets = appState.todosLosTickets;
+  
+  // Métricas de hoy
+  const totalHoy = ticketsHoy.length;
+  const pendientesHoy = ticketsHoy.filter(t => String(t.answers[LINKAFORM_CONFIG.fieldIds.estatus] || '').toLowerCase() !== 'finalizado');
+  const finalizadosHoy = ticketsHoy.filter(t => String(t.answers[LINKAFORM_CONFIG.fieldIds.estatus] || '').toLowerCase() === 'finalizado');
+  
+  let totalFoliosSum = 0;
+  ticketsHoy.forEach(t => {
+    const num = parseInt(t.answers[LINKAFORM_CONFIG.fieldIds.numeroFolios], 10);
+    if (!isNaN(num)) totalFoliosSum += num;
+  });
+
+  DOM.metricTotalHoy.textContent = totalHoy;
+  DOM.metricPendientesHoy.textContent = pendientesHoy.length;
+  DOM.metricFinalizadosHoy.textContent = finalizadosHoy.length;
+  DOM.metricTotalFoliosHoy.textContent = totalFoliosSum;
+
+  // Filtrado de la lista según botón
+  let ticketsAMostrar = [];
+  if (appState.filtroResponsable === 'pendientes') {
+    // Todos los pendientes (hoy y anteriores sin resolver)
+    ticketsAMostrar = todosTickets.filter(t => String(t.answers[LINKAFORM_CONFIG.fieldIds.estatus] || '').toLowerCase() !== 'finalizado');
+  } else if (appState.filtroResponsable === 'todos') {
+    // Todos los de hoy
+    ticketsAMostrar = ticketsHoy;
+  } else {
+    // Histórico completo
+    ticketsAMostrar = todosTickets;
+  }
+
+  if (ticketsAMostrar.length === 0) {
+    DOM.ticketsContainer.innerHTML = `
+      <div class="p-12 text-center text-slate-400">
+        <i data-lucide="check-circle-2" class="w-10 h-10 text-emerald-500 mx-auto mb-2 opacity-80"></i>
+        <p class="text-sm font-semibold text-slate-700">No hay tickets ${appState.filtroResponsable === 'pendientes' ? 'pendientes' : ''} que mostrar.</p>
+        <p class="text-xs text-slate-400 mt-1">Los tickets registrados en Linkaform aparecerán aquí automáticamente.</p>
+      </div>
+    `;
+    if (window.lucide) window.lucide.createIcons();
+    return;
+  }
+
+  // Generar tarjetas de tickets
+  DOM.ticketsContainer.innerHTML = '';
+  ticketsAMostrar.forEach(ticket => {
+    const answers = ticket.answers || {};
+    const nombre = answers[LINKAFORM_CONFIG.fieldIds.nombre] || 'Sin nombre';
+    const tel = answers[LINKAFORM_CONFIG.fieldIds.telefono] || 'Sin teléfono';
+    const email = answers[LINKAFORM_CONFIG.fieldIds.email] || 'Sin correo';
+    const numFolios = answers[LINKAFORM_CONFIG.fieldIds.numeroFolios] || 0;
+    const estatus = String(answers[LINKAFORM_CONFIG.fieldIds.estatus] || 'en_progreso').toLowerCase();
+    const comentarios = answers[LINKAFORM_CONFIG.fieldIds.descripcion] || '';
+    
+    // Archivo Excel adjunto
+    const excelFiles = answers[LINKAFORM_CONFIG.fieldIds.excel] || [];
+    const primerArchivo = Array.isArray(excelFiles) && excelFiles.length > 0 ? excelFiles[0] : null;
+
+    const esFinalizado = estatus === 'finalizado';
+    const fechaHora = ticket.created_at ? new Date(ticket.created_at * 1000).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '--';
+    const turnoLabel = ticket.turnoDia !== 'Ant' ? `TURNO #${ticket.turnoDia}` : 'ANTERIOR';
+
+    const card = document.createElement('div');
+    card.className = `p-5 transition-colors ${esFinalizado ? 'bg-slate-50/60' : 'bg-white hover:bg-slate-50/40'}`;
+    card.innerHTML = `
+      <div class="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+        
+        <!-- Info del Ticket -->
+        <div class="space-y-2 flex-1">
+          <div class="flex flex-wrap items-center gap-2">
+            <!-- Turno Badge -->
+            <span class="px-2.5 py-0.5 rounded-lg text-xs font-black font-mono ${esFinalizado ? 'bg-slate-200 text-slate-700' : 'bg-amber-100 text-amber-900 border border-amber-300'}">
+              ${turnoLabel}
+            </span>
+
+            <!-- Folio Linkaform -->
+            <span class="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+              Folio: <strong>${ticket.folio || ticket.id}</strong>
+            </span>
+
+            <span class="text-xs text-slate-400">🕒 ${fechaHora}</span>
+
+            <!-- Estatus Badge -->
+            <span class="px-2 py-0.5 rounded-full text-[11px] font-bold ${esFinalizado ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800 animate-pulse'}">
+              ${esFinalizado ? '✓ Finalizado' : 'En Progreso'}
+            </span>
+          </div>
+
+          <!-- Datos del Contratista -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs pt-1 text-slate-600">
+            <div>
+              <span class="text-slate-400 block text-[10px] uppercase font-semibold">Contratista</span>
+              <strong class="text-slate-800">${nombre}</strong>
+            </div>
+            <div>
+              <span class="text-slate-400 block text-[10px] uppercase font-semibold">Teléfono</span>
+              <a href="tel:${tel}" class="text-brand-600 hover:underline font-mono">${tel}</a>
+            </div>
+            <div>
+              <span class="text-slate-400 block text-[10px] uppercase font-semibold">Correo de Notificación</span>
+              <a href="mailto:${email}" class="text-brand-600 hover:underline truncate block" title="${email}">${email}</a>
+            </div>
+          </div>
+
+          <!-- Archivo Excel y Conteo -->
+          <div class="flex flex-wrap items-center gap-3 pt-2 text-xs">
+            ${primerArchivo && primerArchivo.file_url ? `
+              <a href="${primerArchivo.file_url}" target="_blank" rel="noopener noreferrer" 
+                class="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-semibold border border-emerald-200 transition-colors">
+                <i data-lucide="download" class="w-3.5 h-3.5 text-emerald-600"></i>
+                <span class="truncate max-w-[200px]">${primerArchivo.file_name || 'Descargar Excel'}</span>
+              </a>
+            ` : '<span class="text-slate-400 italic text-xs">Sin archivo adjunto</span>'}
+
+            <!-- Número de Folios (Automático / Editable) -->
+            <div class="flex items-center space-x-1.5 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
+              <span class="text-[11px] text-slate-500 font-medium">Folios en Excel:</span>
+              <input type="number" id="inputFolios_${ticket.id}" value="${numFolios}" min="1" 
+                class="w-16 px-1.5 py-0.5 bg-white border border-slate-300 rounded text-center text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                ${esFinalizado ? 'disabled' : ''}>
+            </div>
+          </div>
+        </div>
+
+        <!-- Zona de Resolución por la Responsable -->
+        <div class="w-full lg:w-80 shrink-0 bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 space-y-2.5">
+          <label for="comentarios_${ticket.id}" class="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            Comentarios de Resolución:
+          </label>
+          <textarea id="comentarios_${ticket.id}" rows="2" placeholder="Observaciones para el contratista..."
+            class="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-brand-500 resize-none"
+            ${esFinalizado ? 'disabled' : ''}>${comentarios}</textarea>
+
+          ${!esFinalizado ? `
+            <button type="button" onclick="finalizarTicketDesdeWeb('${ticket.id}')"
+              class="w-full py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-semibold text-xs shadow-xs transition-colors flex items-center justify-center space-x-1.5">
+              <i data-lucide="check" class="w-4 h-4"></i>
+              <span>Finalizar y Notificar por Correo</span>
+            </button>
+          ` : `
+            <div class="text-center py-1.5 bg-emerald-50 text-emerald-700 rounded-lg text-xs font-semibold border border-emerald-200 flex items-center justify-center space-x-1">
+              <i data-lucide="mail-check" class="w-3.5 h-3.5"></i>
+              <span>Correo enviado por Linkaform</span>
+            </div>
+          `}
+        </div>
+
+      </div>
+    `;
+
+    DOM.ticketsContainer.appendChild(card);
+  });
+
+  if (window.lucide) window.lucide.createIcons();
+}
+
+/**
+ * Función ejecutada cuando la Responsable hace clic en "Finalizar y Notificar"
+ */
+window.finalizarTicketDesdeWeb = async function(recordId) {
+  if (!confirm('¿Deseas marcar este ticket como FINALIZADO? Linkaform enviará automáticamente la notificación por correo al contratista.')) {
+    return;
+  }
+
+  mostrarLoading('Finalizando Ticket...', 'Actualizando estatus en Linkaform y enviando correo...');
+
+  try {
+    if (!appState.jwtToken) {
+      await autenticarLinkaform();
+    }
+
+    // 1. Obtener datos actuales del registro
+    const getRes = await fetch(`${LINKAFORM_CONFIG.endpoints.formAnswer}${recordId}/`, {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${appState.jwtToken}` }
+    });
+
+    if (!getRes.ok) throw new Error('No se pudo recuperar el registro de Linkaform');
+    const recData = await getRes.json();
+
+    // 2. Extraer valores del formulario en pantalla
+    const inputFolios = document.getElementById(`inputFolios_${recordId}`);
+    const inputComentarios = document.getElementById(`comentarios_${recordId}`);
+
+    const foliosFinal = inputFolios ? parseInt(inputFolios.value, 10) || 1 : 1;
+    const comentariosFinal = inputComentarios ? inputComentarios.value.trim() : 'Incidencia de folios HIT regularizada.';
+
+    // 3. Fusionar respuestas manteniendo campos requeridos (files, email, etc.)
+    const answersActuales = recData.answers || {};
+    answersActuales[LINKAFORM_CONFIG.fieldIds.estatus] = 'finalizado';
+    answersActuales[LINKAFORM_CONFIG.fieldIds.numeroFolios] = foliosFinal;
+    answersActuales[LINKAFORM_CONFIG.fieldIds.descripcion] = comentariosFinal;
+
+    const patchPayload = {
+      form_id: LINKAFORM_CONFIG.formId,
+      geolocation: [],
+      answers: answersActuales
+    };
+
+    // 4. Enviar PATCH a Linkaform
+    const patchRes = await fetch(`${LINKAFORM_CONFIG.endpoints.formAnswer}${recordId}/`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${appState.jwtToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(patchPayload)
+    });
+
+    if (!patchRes.ok) {
+      const errTxt = await patchRes.text();
+      throw new Error(`Error en Linkaform (${patchRes.status}): ${errTxt}`);
+    }
+
+    // 5. Refrescar datos
+    await sincronizarTicketsYTurnos(true);
+    ocultarLoading();
+
+    const contratistaEmail = answersActuales[LINKAFORM_CONFIG.fieldIds.email] || '';
+    alert(`¡Ticket Finalizado con éxito!\n\nSe ha actualizado en Linkaform y se disparó el correo automático a: ${contratistaEmail}`);
+
+  } catch (err) {
+    console.error('Error al finalizar ticket:', err);
+    ocultarLoading();
+    alert(`No se pudo finalizar el ticket: ${err.message || 'Error de servidor'}`);
+  }
+};
+
+function mostrarLoading(titulo, msg) {
+  DOM.loadingTitle.textContent = titulo;
+  DOM.loadingMessage.textContent = msg;
+  DOM.loadingModal.classList.remove('hidden');
+}
+
+function actualizarLoading(titulo, msg) {
+  DOM.loadingTitle.textContent = titulo;
+  DOM.loadingMessage.textContent = msg;
+}
+
+function ocultarLoading() {
+  DOM.loadingModal.classList.add('hidden');
+}

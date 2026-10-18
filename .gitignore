@@ -1,0 +1,11 @@
+# Archivos del sistema y temporales
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.bak
+
+# Entornos virtuales o dependencias locales si aplican
+__pycache__/
+*.pyc
+.env
