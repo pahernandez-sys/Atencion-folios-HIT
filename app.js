@@ -17,7 +17,7 @@ const LINKAFORM_CONFIG = {
   },
   adminAuth: {
     username: 'pahernandez@operacionpci.com.mx',
-    apiKey: '003ab07a66c6795f8d3fcca2a3b6f94a7f06258e'
+    api_key: '003ab07a66c6795f8d3fcca2a3b6f94a7f06258e'
   },
   endpoints: {
     login: 'https://app.linkaform.com/api/infosync/user_admin/login/',
@@ -173,12 +173,14 @@ function getHoyDateString() {
 /**
  * Autenticación silenciosa en Linkaform con credenciales de administración
  */
-async function autenticarLinkaform() {
+async function autenticarLinkaform(force = false) {
   try {
-    const cachedJwt = sessionStorage.getItem('lkf_jwt');
-    if (cachedJwt) {
-      appState.jwtToken = cachedJwt;
-      return cachedJwt;
+    if (!force) {
+      const cachedJwt = sessionStorage.getItem('lkf_jwt');
+      if (cachedJwt) {
+        appState.jwtToken = cachedJwt;
+        return cachedJwt;
+      }
     }
 
     const response = await fetch(LINKAFORM_CONFIG.endpoints.login, {
@@ -189,17 +191,21 @@ async function autenticarLinkaform() {
 
     if (!response.ok) {
       console.warn('Fallo al obtener JWT de Linkaform:', response.status);
+      sessionStorage.removeItem('lkf_jwt');
+      appState.jwtToken = null;
       return null;
     }
 
     const data = await response.json();
-    if (data.jwt) {
+    if (data && data.jwt) {
       appState.jwtToken = data.jwt;
       sessionStorage.setItem('lkf_jwt', data.jwt);
       return data.jwt;
     }
   } catch (err) {
     console.error('Error de red en autenticarLinkaform:', err);
+    sessionStorage.removeItem('lkf_jwt');
+    appState.jwtToken = null;
   }
   return null;
 }
@@ -231,7 +237,7 @@ async function sincronizarTicketsYTurnos(silencioso = false) {
         console.warn('Sesión Linkaform expirada (440/401). Renovando token...');
         sessionStorage.removeItem('lkf_jwt');
         appState.jwtToken = null;
-        await autenticarLinkaform();
+        await autenticarLinkaform(true);
         if (appState.jwtToken) {
           // Reintentar de inmediato con el nuevo token obtenido
           return await sincronizarTicketsYTurnos(silencioso);
@@ -316,19 +322,19 @@ async function sincronizarTicketsYTurnos(silencioso = false) {
  */
 function actualizarTableroTurnos() {
   if (!appState.jwtToken && window.location.protocol === 'file:') {
-    DOM.turnoActualAtencionDisplay.textContent = '--';
-    DOM.ultimoTurnoEmitidoDisplay.textContent = '--';
-    DOM.tuTurnoEstadoSubtext.innerHTML = '<span class="text-amber-300">Abre <a href="http://localhost:8000" class="underline font-bold">http://localhost:8000</a></span>';
+    if (DOM.turnoActualAtencionDisplay) DOM.turnoActualAtencionDisplay.textContent = '--';
+    if (DOM.ultimoTurnoEmitidoDisplay) DOM.ultimoTurnoEmitidoDisplay.textContent = '--';
+    if (DOM.tuTurnoEstadoSubtext) DOM.tuTurnoEstadoSubtext.innerHTML = '<span class="text-amber-300">Abre <a href="http://localhost:8000" class="underline font-bold">http://localhost:8000</a></span>';
     return;
   }
 
-  const tickets = appState.ticketsHoy;
+  const tickets = appState.ticketsHoy || [];
   const totalHoy = tickets.length;
-  DOM.ultimoTurnoEmitidoDisplay.textContent = totalHoy;
+  if (DOM.ultimoTurnoEmitidoDisplay) DOM.ultimoTurnoEmitidoDisplay.textContent = totalHoy;
 
   // Encontrar el primer turno pendiente (estatus != 'finalizado')
   const primerPendiente = tickets.find(t => {
-    const st = String(t.answers[LINKAFORM_CONFIG.fieldIds.estatus] || '').toLowerCase();
+    const st = String(t.answers?.[LINKAFORM_CONFIG.fieldIds.estatus] || '').toLowerCase();
     return st !== 'finalizado';
   });
 
@@ -339,22 +345,36 @@ function actualizarTableroTurnos() {
   } else if (totalHoy > 0) {
     turnoEnAtencion = 'Todos Finalizados';
     appState.responsableTurnoActual = totalHoy;
+  } else {
+    const pendientesHistoricos = (appState.todosLosTickets || []).filter(t => {
+      const st = String(t.answers?.[LINKAFORM_CONFIG.fieldIds.estatus] || '').toLowerCase();
+      return st !== 'finalizado';
+    });
+    if (pendientesHistoricos.length > 0) {
+      turnoEnAtencion = 'Revisando';
+    } else {
+      turnoEnAtencion = 'Al día';
+    }
   }
 
-  DOM.turnoActualAtencionDisplay.textContent = turnoEnAtencion;
-  DOM.responsableTurnoActualText.textContent = turnoEnAtencion !== '--' ? `#${turnoEnAtencion}` : '--';
+  if (DOM.turnoActualAtencionDisplay) DOM.turnoActualAtencionDisplay.textContent = turnoEnAtencion;
+  if (DOM.responsableTurnoActualText) {
+    DOM.responsableTurnoActualText.textContent = typeof turnoEnAtencion === 'number' ? `#${turnoEnAtencion}` : turnoEnAtencion;
+  }
 
   // Total de tickets pendientes (incluyendo hoy y anteriores)
-  const pendientesTotal = appState.todosLosTickets.filter(t => {
-    const st = String(t.answers[LINKAFORM_CONFIG.fieldIds.estatus] || '').toLowerCase();
+  const pendientesTotal = (appState.todosLosTickets || []).filter(t => {
+    const st = String(t.answers?.[LINKAFORM_CONFIG.fieldIds.estatus] || '').toLowerCase();
     return st !== 'finalizado';
   }).length;
 
-  if (pendientesTotal > 0) {
-    DOM.badgePendientesHeader.textContent = pendientesTotal;
-    DOM.badgePendientesHeader.classList.remove('hidden');
-  } else {
-    DOM.badgePendientesHeader.classList.add('hidden');
+  if (DOM.badgePendientesHeader) {
+    if (pendientesTotal > 0) {
+      DOM.badgePendientesHeader.textContent = pendientesTotal;
+      DOM.badgePendientesHeader.classList.remove('hidden');
+    } else {
+      DOM.badgePendientesHeader.classList.add('hidden');
+    }
   }
 
   // Refrescar estado de "Tu Turno Actual"
@@ -866,13 +886,18 @@ async function handleFormSubmitContratista(e) {
         ],
         [LINKAFORM_CONFIG.fieldIds.numeroFolios]: appState.detectedFoliosCount,
         [LINKAFORM_CONFIG.fieldIds.descripcion]: 'Incidencia reportada por contratista.',
-        [LINKAFORM_CONFIG.fieldIds.estatus]: 'en_progreso'
+        [LINKAFORM_CONFIG.fieldIds.estatus]: 'En Progreso'
       }
     };
 
+    const submitHeaders = { 'Content-Type': 'application/json' };
+    if (appState.jwtToken) {
+      submitHeaders['Authorization'] = `Bearer ${appState.jwtToken}`;
+    }
+
     const submitRes = await fetch(LINKAFORM_CONFIG.endpoints.formAnswer, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: submitHeaders,
       body: JSON.stringify(payload)
     });
 
@@ -887,7 +912,14 @@ async function handleFormSubmitContratista(e) {
     // 3. Sincronizar tickets y calcular el Turno asignado
     await sincronizarTicketsYTurnos(true);
 
-    const miTurnoNum = appState.ticketsHoy.length || 1;
+    let miTurnoNum = 1;
+    const miRegistroIndexado = (appState.ticketsHoy || []).find(t => (t.id && createdRecord.id && t.id == createdRecord.id) || (t.folio && t.folio == folioAsignado));
+    if (miRegistroIndexado && typeof miRegistroIndexado.turnoDia === 'number') {
+      miTurnoNum = miRegistroIndexado.turnoDia;
+    } else {
+      miTurnoNum = (appState.ticketsHoy && appState.ticketsHoy.length > 0) ? appState.ticketsHoy.length : 1;
+    }
+
     const hoyStr = getHoyDateString();
     
     // Guardar mi turno en localStorage para el día de hoy
@@ -925,10 +957,11 @@ async function handleFormSubmitContratista(e) {
  */
 function renderizarVistaResponsable() {
   if (!appState.jwtToken) {
-    DOM.metricTotalHoy.textContent = '--';
-    DOM.metricPendientesHoy.textContent = '--';
-    DOM.metricFinalizadosHoy.textContent = '--';
-    DOM.metricTotalFoliosHoy.textContent = '--';
+    if (DOM.metricTotalHistorico) DOM.metricTotalHistorico.textContent = '--';
+    if (DOM.metricPendientesTotal) DOM.metricPendientesTotal.textContent = '--';
+    if (DOM.metricFinalizadosTotal) DOM.metricFinalizadosTotal.textContent = '--';
+    if (DOM.metricTotalHoy) DOM.metricTotalHoy.textContent = '--';
+    if (DOM.subtextFoliosHoy) DOM.subtextFoliosHoy.textContent = 'Sin conexión';
 
     DOM.ticketsContainer.innerHTML = `
       <div class="p-8 text-center text-amber-900 bg-amber-50 rounded-2xl m-6 border border-amber-200 shadow-xs space-y-3">
@@ -1180,7 +1213,7 @@ window.finalizarTicketDesdeWeb = async function(recordId) {
 
     // 3. Fusionar respuestas manteniendo campos requeridos (files, email, etc.)
     const answersActuales = recData.answers || {};
-    answersActuales[LINKAFORM_CONFIG.fieldIds.estatus] = 'finalizado';
+    answersActuales[LINKAFORM_CONFIG.fieldIds.estatus] = 'Finalizado';
     answersActuales[LINKAFORM_CONFIG.fieldIds.numeroFolios] = foliosFinal;
     answersActuales[LINKAFORM_CONFIG.fieldIds.descripcion] = comentariosFinal;
 
