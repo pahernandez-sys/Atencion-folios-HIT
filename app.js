@@ -26,7 +26,7 @@ const LINKAFORM_CONFIG = {
 const RESPONSABLES_CONFIG = [
   {
     id: 'pahernandez',
-    nombre: 'Paulina Hernández',
+    nombre: 'Pablo Hernández',
     email: 'pahernandez@operacionpci.com.mx',
     apiKey: '003ab07a66c6795f8d3fcca2a3b6f94a7f06258e',
     pinHash: 'e8743787bbef7d5ffb65a3a13f7c51a90b3ce8b263b94b7bb3aeb7d35b7fa1ad' // PIN: 3546
