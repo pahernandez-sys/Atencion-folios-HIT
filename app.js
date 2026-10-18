@@ -53,7 +53,8 @@ const appState = {
   jwtToken: null,
   todosLosTickets: [],
   ticketsHoy: [],
-  filtroResponsable: 'pendientes', // 'pendientes' | 'todos' | 'historico'
+  filtroResponsable: 'pendientes', // 'pendientes' | 'todos' | 'finalizados' | 'historico'
+  busquedaFiltro: '',
   responsableTurnoActual: 1
 };
 
@@ -94,17 +95,22 @@ const DOM = {
   emailError: document.getElementById('emailError'),
   fileError: document.getElementById('fileError'),
 
-  // Vista Responsable
+  // Vista Responsable (Mesa de Control & Histórico Linkaform)
   responsableTurnoActualText: document.getElementById('responsableTurnoActualText'),
   btnAvanzarTurno: document.getElementById('btnAvanzarTurno'),
   btnRecargarLista: document.getElementById('btnRecargarLista'),
+  metricTotalHistorico: document.getElementById('metricTotalHistorico'),
+  metricPendientesTotal: document.getElementById('metricPendientesTotal'),
+  metricFinalizadosTotal: document.getElementById('metricFinalizadosTotal'),
   metricTotalHoy: document.getElementById('metricTotalHoy'),
-  metricPendientesHoy: document.getElementById('metricPendientesHoy'),
-  metricFinalizadosHoy: document.getElementById('metricFinalizadosHoy'),
-  metricTotalFoliosHoy: document.getElementById('metricTotalFoliosHoy'),
+  subtextFoliosHoy: document.getElementById('subtextFoliosHoy'),
+  badgeConteoMostrados: document.getElementById('badgeConteoMostrados'),
+  inputBuscarTicket: document.getElementById('inputBuscarTicket'),
   filtroSoloPendientes: document.getElementById('filtroSoloPendientes'),
   filtroTodos: document.getElementById('filtroTodos'),
+  filtroSoloFinalizados: document.getElementById('filtroSoloFinalizados'),
   filtroHistorico: document.getElementById('filtroHistorico'),
+  btnExportarExcel: document.getElementById('btnExportarExcel'),
   ticketsContainer: document.getElementById('ticketsContainer'),
 
   // Modales
@@ -213,7 +219,7 @@ async function sincronizarTicketsYTurnos(silencioso = false) {
   }
 
   try {
-    const response = await fetch(`${LINKAFORM_CONFIG.endpoints.formAnswer}?form_id=${LINKAFORM_CONFIG.formId}&limit=100`, {
+    const response = await fetch(`${LINKAFORM_CONFIG.endpoints.formAnswer}?form_id=${LINKAFORM_CONFIG.formId}&limit=500`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${appState.jwtToken}`
@@ -231,6 +237,9 @@ async function sincronizarTicketsYTurnos(silencioso = false) {
 
     const data = await response.json();
     const records = data.objects || [];
+    
+    // Ordenar tickets generales del más reciente al más antiguo para consulta histórica
+    records.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
     appState.todosLosTickets = records;
 
     // Identificar los tickets de hoy
@@ -242,7 +251,7 @@ async function sincronizarTicketsYTurnos(silencioso = false) {
       return recDateStr === hoyStr;
     });
 
-    // Ordenar de más antiguo a más nuevo para asignar Turno 1, Turno 2...
+    // Ordenar de más antiguo a más nuevo para asignar Turno 1, Turno 2... hoy
     recordsHoy.sort((a, b) => a.created_at - b.created_at);
 
     // Asignar número de turno secuencial del día a cada ticket de hoy
@@ -250,10 +259,10 @@ async function sincronizarTicketsYTurnos(silencioso = false) {
       r.turnoDia = idx + 1;
     });
 
-    // Para tickets anteriores sin turno de hoy, marcar su turno como previo
+    // Para tickets anteriores sin turno de hoy, marcar como Histórico
     records.forEach(r => {
       if (!r.turnoDia) {
-        r.turnoDia = 'Ant';
+        r.turnoDia = 'Histórico';
       }
     });
 
@@ -421,18 +430,30 @@ function setupEventListeners() {
     }
   });
 
-  // Filtros de la Responsable
-  DOM.filtroSoloPendientes.addEventListener('click', () => {
-    appState.filtroResponsable = 'pendientes';
-    actualizarEstilosFiltros();
-    renderizarVistaResponsable();
-  });
+  // Filtros de la Responsable (Mesa de Control)
+  if (DOM.filtroSoloPendientes) {
+    DOM.filtroSoloPendientes.addEventListener('click', () => {
+      appState.filtroResponsable = 'pendientes';
+      actualizarEstilosFiltros();
+      renderizarVistaResponsable();
+    });
+  }
 
-  DOM.filtroTodos.addEventListener('click', () => {
-    appState.filtroResponsable = 'todos';
-    actualizarEstilosFiltros();
-    renderizarVistaResponsable();
-  });
+  if (DOM.filtroTodos) {
+    DOM.filtroTodos.addEventListener('click', () => {
+      appState.filtroResponsable = 'todos';
+      actualizarEstilosFiltros();
+      renderizarVistaResponsable();
+    });
+  }
+
+  if (DOM.filtroSoloFinalizados) {
+    DOM.filtroSoloFinalizados.addEventListener('click', () => {
+      appState.filtroResponsable = 'finalizados';
+      actualizarEstilosFiltros();
+      renderizarVistaResponsable();
+    });
+  }
 
   if (DOM.filtroHistorico) {
     DOM.filtroHistorico.addEventListener('click', () => {
@@ -440,6 +461,19 @@ function setupEventListeners() {
       actualizarEstilosFiltros();
       renderizarVistaResponsable();
     });
+  }
+
+  // Buscador de tickets en tiempo real
+  if (DOM.inputBuscarTicket) {
+    DOM.inputBuscarTicket.addEventListener('input', (e) => {
+      appState.busquedaFiltro = e.target.value.toLowerCase().trim();
+      renderizarVistaResponsable();
+    });
+  }
+
+  // Exportar histórico completo a Excel
+  if (DOM.btnExportarExcel) {
+    DOM.btnExportarExcel.addEventListener('click', exportarHistoricoExcel);
   }
 
   // Eventos de Autenticación de Mesa de Control (PIN: 3546)
@@ -500,15 +534,63 @@ function cerrarSesionMesa() {
   cambiarPestana('contratista');
 }
 
-function actualizarEstilosFiltros() {
-  const activoClass = 'px-3 py-1 rounded-lg text-xs font-semibold bg-brand-50 text-brand-700 border border-brand-200 transition-colors';
-  const inactivoClass = 'px-3 py-1 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors';
-
-  DOM.filtroSoloPendientes.className = appState.filtroResponsable === 'pendientes' ? activoClass : inactivoClass;
-  DOM.filtroTodos.className = appState.filtroResponsable === 'todos' ? activoClass : inactivoClass;
-  if (DOM.filtroHistorico) {
-    DOM.filtroHistorico.className = appState.filtroResponsable === 'historico' ? activoClass : inactivoClass;
+/**
+ * Exporta el histórico completo de Linkaform a un archivo Excel (.xlsx) con SheetJS
+ */
+function exportarHistoricoExcel() {
+  const tickets = appState.todosLosTickets;
+  if (!tickets || tickets.length === 0) {
+    alert('No hay tickets en la base de datos de Linkaform para exportar.');
+    return;
   }
+
+  const filas = tickets.map(t => {
+    const a = t.answers || {};
+    const nombre = a[LINKAFORM_CONFIG.fieldIds.nombre] || '';
+    const tel = a[LINKAFORM_CONFIG.fieldIds.telefono] || '';
+    const email = a[LINKAFORM_CONFIG.fieldIds.email] || '';
+    const folios = a[LINKAFORM_CONFIG.fieldIds.numeroFolios] || 0;
+    const estatusRaw = String(a[LINKAFORM_CONFIG.fieldIds.estatus] || 'en_progreso').toLowerCase();
+    const estatus = estatusRaw === 'finalizado' ? 'Finalizado' : 'En Progreso';
+    const comentarios = a[LINKAFORM_CONFIG.fieldIds.descripcion] || '';
+    const excelFiles = a[LINKAFORM_CONFIG.fieldIds.excel] || [];
+    const urlArchivo = (Array.isArray(excelFiles) && excelFiles.length > 0) ? (excelFiles[0].file_url || '') : '';
+    
+    let fechaStr = '';
+    if (t.created_at) {
+      const d = new Date(t.created_at * 1000);
+      fechaStr = d.toLocaleString('es-MX');
+    }
+
+    return {
+      'Folio Linkaform': t.folio || t.id,
+      'Fecha Creación': fechaStr,
+      'Estatus': estatus,
+      'Contratista': (nombre && nombre !== 'None' && nombre.trim() !== '') ? nombre : (email || 'Sin especificar'),
+      'Teléfono': tel,
+      'Correo': email,
+      'Folios en Excel': folios,
+      'Comentarios de Resolución': comentarios,
+      'Enlace Excel Adjunto': urlArchivo
+    };
+  });
+
+  const ws = XLSX.utils.json_to_sheet(filas);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Histórico Linkaform');
+  
+  const hoyStr = getHoyDateString();
+  XLSX.writeFile(wb, `Historico_Folios_HIT_Linkaform_${hoyStr}.xlsx`);
+}
+
+function actualizarEstilosFiltros() {
+  const activoClass = 'px-2.5 py-1 rounded-lg font-semibold bg-white text-brand-700 shadow-xs transition-colors';
+  const inactivoClass = 'px-2.5 py-1 rounded-lg font-semibold text-slate-600 hover:text-slate-900 transition-colors';
+
+  if (DOM.filtroSoloPendientes) DOM.filtroSoloPendientes.className = appState.filtroResponsable === 'pendientes' ? activoClass : inactivoClass;
+  if (DOM.filtroTodos) DOM.filtroTodos.className = appState.filtroResponsable === 'todos' ? activoClass : inactivoClass;
+  if (DOM.filtroSoloFinalizados) DOM.filtroSoloFinalizados.className = appState.filtroResponsable === 'finalizados' ? activoClass : inactivoClass;
+  if (DOM.filtroHistorico) DOM.filtroHistorico.className = appState.filtroResponsable === 'historico' ? activoClass : inactivoClass;
 }
 
 function cambiarPestana(tab) {
@@ -819,41 +901,61 @@ function renderizarVistaResponsable() {
   const ticketsHoy = appState.ticketsHoy;
   const todosTickets = appState.todosLosTickets;
   
-  // Métricas de hoy
+  // Métricas Globales de Linkaform
+  const totalHistorico = todosTickets.length;
+  const pendientesTotal = todosTickets.filter(t => String(t.answers[LINKAFORM_CONFIG.fieldIds.estatus] || '').toLowerCase() !== 'finalizado');
+  const finalizadosTotal = todosTickets.filter(t => String(t.answers[LINKAFORM_CONFIG.fieldIds.estatus] || '').toLowerCase() === 'finalizado');
   const totalHoy = ticketsHoy.length;
-  const pendientesHoy = ticketsHoy.filter(t => String(t.answers[LINKAFORM_CONFIG.fieldIds.estatus] || '').toLowerCase() !== 'finalizado');
-  const finalizadosHoy = ticketsHoy.filter(t => String(t.answers[LINKAFORM_CONFIG.fieldIds.estatus] || '').toLowerCase() === 'finalizado');
-  
-  let totalFoliosSum = 0;
+
+  let foliosHoySum = 0;
   ticketsHoy.forEach(t => {
     const num = parseInt(t.answers[LINKAFORM_CONFIG.fieldIds.numeroFolios], 10);
-    if (!isNaN(num)) totalFoliosSum += num;
+    if (!isNaN(num)) foliosHoySum += num;
   });
 
-  DOM.metricTotalHoy.textContent = totalHoy;
-  DOM.metricPendientesHoy.textContent = pendientesHoy.length;
-  DOM.metricFinalizadosHoy.textContent = finalizadosHoy.length;
-  DOM.metricTotalFoliosHoy.textContent = totalFoliosSum;
+  if (DOM.metricTotalHistorico) DOM.metricTotalHistorico.textContent = totalHistorico;
+  if (DOM.metricPendientesTotal) DOM.metricPendientesTotal.textContent = pendientesTotal.length;
+  if (DOM.metricFinalizadosTotal) DOM.metricFinalizadosTotal.textContent = finalizadosTotal.length;
+  if (DOM.metricTotalHoy) DOM.metricTotalHoy.textContent = totalHoy;
+  if (DOM.subtextFoliosHoy) DOM.subtextFoliosHoy.textContent = `Folios de hoy: ${foliosHoySum}`;
 
   // Filtrado de la lista según botón
   let ticketsAMostrar = [];
   if (appState.filtroResponsable === 'pendientes') {
-    // Todos los pendientes (hoy y anteriores sin resolver)
-    ticketsAMostrar = todosTickets.filter(t => String(t.answers[LINKAFORM_CONFIG.fieldIds.estatus] || '').toLowerCase() !== 'finalizado');
+    ticketsAMostrar = pendientesTotal;
   } else if (appState.filtroResponsable === 'todos') {
-    // Todos los de hoy
     ticketsAMostrar = ticketsHoy;
+  } else if (appState.filtroResponsable === 'finalizados') {
+    ticketsAMostrar = finalizadosTotal;
   } else {
-    // Histórico completo
     ticketsAMostrar = todosTickets;
+  }
+
+  // Filtrado por buscador en tiempo real
+  if (appState.busquedaFiltro) {
+    const q = appState.busquedaFiltro;
+    ticketsAMostrar = ticketsAMostrar.filter(t => {
+      const a = t.answers || {};
+      const nombre = String(a[LINKAFORM_CONFIG.fieldIds.nombre] || '').toLowerCase();
+      const folio = String(t.folio || t.id || '').toLowerCase();
+      const email = String(a[LINKAFORM_CONFIG.fieldIds.email] || '').toLowerCase();
+      const tel = String(a[LINKAFORM_CONFIG.fieldIds.telefono] || '').toLowerCase();
+      return nombre.includes(q) || folio.includes(q) || email.includes(q) || tel.includes(q);
+    });
+  }
+
+  if (DOM.badgeConteoMostrados) {
+    DOM.badgeConteoMostrados.textContent = `${ticketsAMostrar.length} registro${ticketsAMostrar.length !== 1 ? 's' : ''}`;
   }
 
   if (ticketsAMostrar.length === 0) {
     DOM.ticketsContainer.innerHTML = `
       <div class="p-12 text-center text-slate-400">
-        <i data-lucide="check-circle-2" class="w-10 h-10 text-emerald-500 mx-auto mb-2 opacity-80"></i>
-        <p class="text-sm font-semibold text-slate-700">No hay tickets ${appState.filtroResponsable === 'pendientes' ? 'pendientes' : ''} que mostrar.</p>
-        <p class="text-xs text-slate-400 mt-1">Los tickets registrados en Linkaform aparecerán aquí automáticamente.</p>
+        <i data-lucide="inbox" class="w-10 h-10 text-slate-300 mx-auto mb-2"></i>
+        <p class="text-sm font-semibold text-slate-700">No se encontraron tickets con este filtro.</p>
+        <p class="text-xs text-slate-400 mt-1">
+          ${appState.busquedaFiltro ? `No hay coincidencias para "${appState.busquedaFiltro}".` : 'Cambia de filtro o consulta el Histórico Completo.'}
+        </p>
       </div>
     `;
     if (window.lucide) window.lucide.createIcons();
@@ -864,7 +966,8 @@ function renderizarVistaResponsable() {
   DOM.ticketsContainer.innerHTML = '';
   ticketsAMostrar.forEach(ticket => {
     const answers = ticket.answers || {};
-    const nombre = answers[LINKAFORM_CONFIG.fieldIds.nombre] || 'Sin nombre';
+    const rawNombre = answers[LINKAFORM_CONFIG.fieldIds.nombre];
+    const nombre = (rawNombre && rawNombre !== 'None' && String(rawNombre).trim() !== '') ? rawNombre : 'Sin nombre';
     const tel = answers[LINKAFORM_CONFIG.fieldIds.telefono] || 'Sin teléfono';
     const email = answers[LINKAFORM_CONFIG.fieldIds.email] || 'Sin correo';
     const numFolios = answers[LINKAFORM_CONFIG.fieldIds.numeroFolios] || 0;
@@ -876,8 +979,21 @@ function renderizarVistaResponsable() {
     const primerArchivo = Array.isArray(excelFiles) && excelFiles.length > 0 ? excelFiles[0] : null;
 
     const esFinalizado = estatus === 'finalizado';
-    const fechaHora = ticket.created_at ? new Date(ticket.created_at * 1000).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '--';
-    const turnoLabel = ticket.turnoDia !== 'Ant' ? `TURNO #${ticket.turnoDia}` : 'ANTERIOR';
+    
+    let fechaHora = '--';
+    if (ticket.created_at) {
+      const d = new Date(ticket.created_at * 1000);
+      fechaHora = d.toLocaleDateString('es-MX', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+
+    const esDeHoy = typeof ticket.turnoDia === 'number';
+    const turnoLabel = esDeHoy ? `TURNO #${ticket.turnoDia} (HOY)` : 'HISTÓRICO BD';
 
     const card = document.createElement('div');
     card.className = `p-5 transition-colors ${esFinalizado ? 'bg-slate-50/60' : 'bg-white hover:bg-slate-50/40'}`;
@@ -888,7 +1004,7 @@ function renderizarVistaResponsable() {
         <div class="space-y-2 flex-1">
           <div class="flex flex-wrap items-center gap-2">
             <!-- Turno Badge -->
-            <span class="px-2.5 py-0.5 rounded-lg text-xs font-black font-mono ${esFinalizado ? 'bg-slate-200 text-slate-700' : 'bg-amber-100 text-amber-900 border border-amber-300'}">
+            <span class="px-2.5 py-0.5 rounded-lg text-xs font-black font-mono ${esDeHoy ? (esFinalizado ? 'bg-slate-200 text-slate-700' : 'bg-amber-100 text-amber-900 border border-amber-300') : 'bg-blue-50 text-blue-700 border border-blue-200'}">
               ${turnoLabel}
             </span>
 
@@ -897,11 +1013,11 @@ function renderizarVistaResponsable() {
               Folio: <strong>${ticket.folio || ticket.id}</strong>
             </span>
 
-            <span class="text-xs text-slate-400">🕒 ${fechaHora}</span>
+            <span class="text-xs text-slate-400 font-medium">🕒 ${fechaHora}</span>
 
             <!-- Estatus Badge -->
             <span class="px-2 py-0.5 rounded-full text-[11px] font-bold ${esFinalizado ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800 animate-pulse'}">
-              ${esFinalizado ? '✓ Finalizado' : 'En Progreso'}
+              ${esFinalizado ? '✓ Atendido / Finalizado' : '⚡ Pendiente / En Progreso'}
             </span>
           </div>
 

@@ -34,7 +34,7 @@
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
 
-  <link rel="stylesheet" href="style.css?v=5">
+  <link rel="stylesheet" href="style.css?v=6">
 </head>
 <body class="h-full flex flex-col font-sans text-slate-800 antialiased selection:bg-brand-500 selection:text-white">
 
@@ -320,43 +320,69 @@
         </div>
       </section>
 
-      <!-- Métricas del Día -->
+      <!-- Métricas Globales de Linkaform y del Día -->
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-          <span class="text-xs text-slate-400 block">Tickets de Hoy</span>
-          <span id="metricTotalHoy" class="text-xl font-bold text-slate-800">0</span>
+          <span class="text-xs text-slate-500 font-semibold block uppercase">Total Base Linkaform</span>
+          <span id="metricTotalHistorico" class="text-2xl font-black text-slate-800">0</span>
+          <span class="text-[10px] text-slate-400 block mt-0.5">Tickets registrados en BD</span>
         </div>
         <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-          <span class="text-xs text-amber-600 font-medium block">En Progreso (Pendientes)</span>
-          <span id="metricPendientesHoy" class="text-xl font-bold text-amber-600">0</span>
+          <span class="text-xs text-amber-700 font-semibold block uppercase">Pendientes (En Progreso)</span>
+          <span id="metricPendientesTotal" class="text-2xl font-black text-amber-600">0</span>
+          <span class="text-[10px] text-amber-600/80 block mt-0.5">Requieren atención</span>
         </div>
         <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-          <span class="text-xs text-emerald-600 font-medium block">Finalizados Hoy</span>
-          <span id="metricFinalizadosHoy" class="text-xl font-bold text-emerald-600">0</span>
+          <span class="text-xs text-emerald-700 font-semibold block uppercase">Finalizados (Atendidos)</span>
+          <span id="metricFinalizadosTotal" class="text-2xl font-black text-emerald-600">0</span>
+          <span class="text-[10px] text-emerald-600/80 block mt-0.5">Resueltos y notificados</span>
         </div>
         <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-          <span class="text-xs text-brand-600 font-medium block">Total Folios Procesados</span>
-          <span id="metricTotalFoliosHoy" class="text-xl font-bold text-brand-700">0</span>
+          <span class="text-xs text-brand-700 font-semibold block uppercase">Turnos de Hoy</span>
+          <span id="metricTotalHoy" class="text-2xl font-black text-brand-700">0</span>
+          <span id="subtextFoliosHoy" class="text-[10px] text-slate-400 block mt-0.5">Folios de hoy: 0</span>
         </div>
       </div>
 
-      <!-- Filtro y Lista de Tickets de la Responsable -->
+      <!-- Filtro, Búsqueda y Descarga de Histórico -->
       <section class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div class="p-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50">
+        <div class="p-4 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-slate-50/50">
+          
           <div class="flex items-center space-x-2">
-            <i data-lucide="list-ordered" class="w-4 h-4 text-brand-600"></i>
-            <h3 class="text-sm font-bold text-slate-900">Cola de Tickets y Folios</h3>
+            <i data-lucide="database" class="w-4 h-4 text-brand-600"></i>
+            <h3 class="text-sm font-bold text-slate-900">Histórico de Folios Linkaform</h3>
+            <span id="badgeConteoMostrados" class="text-xs font-mono font-bold bg-slate-200 text-slate-700 px-2 py-0.5 rounded-full">0</span>
           </div>
 
-          <div class="flex items-center space-x-2">
-            <button type="button" id="filtroSoloPendientes" class="px-3 py-1 rounded-lg text-xs font-semibold bg-brand-50 text-brand-700 border border-brand-200 transition-colors">
-              Solo Pendientes
-            </button>
-            <button type="button" id="filtroTodos" class="px-3 py-1 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors">
-              Todos los de Hoy
-            </button>
-            <button type="button" id="filtroHistorico" class="px-3 py-1 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors">
-              Histórico Completo
+          <!-- Buscador en tiempo real, Filtros y Exportar Excel -->
+          <div class="flex flex-wrap items-center gap-2">
+            <!-- Input de búsqueda -->
+            <div class="relative w-full sm:w-60">
+              <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+              <input type="text" id="inputBuscarTicket" placeholder="Buscar contratista, folio, correo..."
+                class="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500">
+            </div>
+
+            <!-- Botones de Filtro -->
+            <div class="flex items-center space-x-1 bg-slate-200/60 p-1 rounded-xl text-xs">
+              <button type="button" id="filtroSoloPendientes" class="px-2.5 py-1 rounded-lg font-semibold bg-white text-brand-700 shadow-xs transition-colors">
+                Pendientes
+              </button>
+              <button type="button" id="filtroTodos" class="px-2.5 py-1 rounded-lg font-semibold text-slate-600 hover:text-slate-900 transition-colors">
+                Hoy
+              </button>
+              <button type="button" id="filtroSoloFinalizados" class="px-2.5 py-1 rounded-lg font-semibold text-slate-600 hover:text-slate-900 transition-colors">
+                Finalizados
+              </button>
+              <button type="button" id="filtroHistorico" class="px-2.5 py-1 rounded-lg font-semibold text-slate-600 hover:text-slate-900 transition-colors">
+                Todos
+              </button>
+            </div>
+
+            <!-- Botón Exportar Histórico Excel -->
+            <button type="button" id="btnExportarExcel" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-xs transition-colors flex items-center space-x-1.5" title="Descargar todo el histórico en Excel">
+              <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i>
+              <span>Exportar Excel</span>
             </button>
           </div>
         </div>
@@ -474,6 +500,6 @@
     <p>Operación PCI • Mesa de Control HIT • Conexión Linkaform API</p>
   </footer>
 
-  <script src="app.js?v=5"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>
