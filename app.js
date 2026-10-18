@@ -26,6 +26,24 @@ const LINKAFORM_CONFIG = {
   }
 };
 
+// Hash criptográfico SHA-256 del PIN autorizado para la Mesa de Control (PIN: 3546)
+const MESA_CONTROL_PIN_HASH = 'e8743787bbef7d5ffb65a3a13f7c51a90b3ce8b263b94b7bb3aeb7d35b7fa1ad';
+
+async function calcularSha256(texto) {
+  if (window.crypto && crypto.subtle) {
+    const msgUint8 = new TextEncoder().encode(texto);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+  // Fallback seguro
+  return texto === '3546' ? MESA_CONTROL_PIN_HASH : 'invalido';
+}
+
+function estaAutenticadoMesa() {
+  return sessionStorage.getItem('mesa_control_auth') === 'true';
+}
+
 // Estado global de la aplicación
 const appState = {
   activeTab: 'contratista', // 'contratista' | 'responsable'
@@ -98,7 +116,17 @@ const DOM = {
   modalTurnoActualResponsable: document.getElementById('modalTurnoActualResponsable'),
   modalFolioDisplay: document.getElementById('modalFolioDisplay'),
   modalEmailDisplay: document.getElementById('modalEmailDisplay'),
-  modalCerrarBtn: document.getElementById('modalCerrarBtn')
+  modalCerrarBtn: document.getElementById('modalCerrarBtn'),
+
+  // Auth Mesa de Control
+  btnCerrarSesionMesa: document.getElementById('btnCerrarSesionMesa'),
+  modalAuthMesa: document.getElementById('modalAuthMesa'),
+  formAuthMesa: document.getElementById('formAuthMesa'),
+  inputPinMesa: document.getElementById('inputPinMesa'),
+  btnToggleVerPin: document.getElementById('btnToggleVerPin'),
+  iconVerPin: document.getElementById('iconVerPin'),
+  errorPinMesa: document.getElementById('errorPinMesa'),
+  btnCancelarAuthMesa: document.getElementById('btnCancelarAuthMesa')
 };
 
 // Inicialización de la aplicación
@@ -413,6 +441,63 @@ function setupEventListeners() {
       renderizarVistaResponsable();
     });
   }
+
+  // Eventos de Autenticación de Mesa de Control (PIN: 3546)
+  if (DOM.formAuthMesa) {
+    DOM.formAuthMesa.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const pinIngresado = DOM.inputPinMesa.value.trim();
+      const hash = await calcularSha256(pinIngresado);
+
+      if (hash === MESA_CONTROL_PIN_HASH) {
+        sessionStorage.setItem('mesa_control_auth', 'true');
+        cerrarModalAuthMesa();
+        cambiarPestana('responsable');
+      } else {
+        DOM.errorPinMesa.classList.remove('hidden');
+        DOM.inputPinMesa.select();
+        DOM.inputPinMesa.focus();
+      }
+    });
+  }
+
+  if (DOM.btnCancelarAuthMesa) {
+    DOM.btnCancelarAuthMesa.addEventListener('click', cerrarModalAuthMesa);
+  }
+
+  if (DOM.btnCerrarSesionMesa) {
+    DOM.btnCerrarSesionMesa.addEventListener('click', cerrarSesionMesa);
+  }
+
+  if (DOM.btnToggleVerPin) {
+    DOM.btnToggleVerPin.addEventListener('click', () => {
+      const isPassword = DOM.inputPinMesa.type === 'password';
+      DOM.inputPinMesa.type = isPassword ? 'text' : 'password';
+      DOM.iconVerPin.setAttribute('data-lucide', isPassword ? 'eye-off' : 'eye');
+      if (window.lucide) window.lucide.createIcons();
+    });
+  }
+}
+
+function abrirModalAuthMesa() {
+  DOM.inputPinMesa.value = '';
+  DOM.errorPinMesa.classList.add('hidden');
+  DOM.modalAuthMesa.classList.remove('hidden');
+  setTimeout(() => DOM.inputPinMesa.focus(), 100);
+}
+
+function cerrarModalAuthMesa() {
+  DOM.modalAuthMesa.classList.add('hidden');
+  DOM.inputPinMesa.value = '';
+  DOM.errorPinMesa.classList.add('hidden');
+}
+
+function cerrarSesionMesa() {
+  sessionStorage.removeItem('mesa_control_auth');
+  if (DOM.btnCerrarSesionMesa) {
+    DOM.btnCerrarSesionMesa.classList.add('hidden');
+  }
+  cambiarPestana('contratista');
 }
 
 function actualizarEstilosFiltros() {
@@ -427,17 +512,30 @@ function actualizarEstilosFiltros() {
 }
 
 function cambiarPestana(tab) {
+  if (tab === 'responsable' && !estaAutenticadoMesa()) {
+    abrirModalAuthMesa();
+    return;
+  }
+
   appState.activeTab = tab;
   if (tab === 'contratista') {
     DOM.vistaContratista.classList.remove('hidden');
     DOM.vistaResponsable.classList.add('hidden');
     DOM.tabContratista.className = 'px-3.5 py-1.5 rounded-lg bg-white text-brand-700 shadow-xs font-semibold flex items-center space-x-1.5 transition-all';
     DOM.tabResponsable.className = 'px-3.5 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 flex items-center space-x-1.5 transition-all';
+    if (DOM.btnCerrarSesionMesa) {
+      if (estaAutenticadoMesa()) {
+        DOM.btnCerrarSesionMesa.classList.remove('hidden');
+      } else {
+        DOM.btnCerrarSesionMesa.classList.add('hidden');
+      }
+    }
   } else {
     DOM.vistaContratista.classList.add('hidden');
     DOM.vistaResponsable.classList.remove('hidden');
     DOM.tabResponsable.className = 'px-3.5 py-1.5 rounded-lg bg-white text-brand-700 shadow-xs font-semibold flex items-center space-x-1.5 transition-all';
     DOM.tabContratista.className = 'px-3.5 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 flex items-center space-x-1.5 transition-all';
+    if (DOM.btnCerrarSesionMesa) DOM.btnCerrarSesionMesa.classList.remove('hidden');
     sincronizarTicketsYTurnos();
     renderizarVistaResponsable();
   }
