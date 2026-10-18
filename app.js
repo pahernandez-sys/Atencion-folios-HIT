@@ -228,9 +228,28 @@ async function sincronizarTicketsYTurnos(silencioso = false) {
 
     if (!response.ok) {
       if (response.status === 440 || response.status === 401) {
+        console.warn('Sesión Linkaform expirada (440/401). Renovando token...');
         sessionStorage.removeItem('lkf_jwt');
         appState.jwtToken = null;
         await autenticarLinkaform();
+        if (appState.jwtToken) {
+          // Reintentar de inmediato con el nuevo token obtenido
+          return await sincronizarTicketsYTurnos(silencioso);
+        }
+      }
+      
+      if (appState.activeTab === 'responsable') {
+        DOM.ticketsContainer.innerHTML = `
+          <div class="p-8 text-center text-rose-800 bg-rose-50 rounded-xl m-4 border border-rose-200">
+            <i data-lucide="alert-octagon" class="w-8 h-8 mx-auto mb-2 text-rose-600"></i>
+            <p class="font-bold text-sm">Respuesta inesperada de Linkaform (${response.status})</p>
+            <p class="text-xs text-rose-600 mt-1">No se pudieron recuperar los tickets en este momento.</p>
+            <button type="button" onclick="sincronizarTicketsYTurnos()" class="mt-3 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-xs shadow-xs">
+              Reintentar Conexión
+            </button>
+          </div>
+        `;
+        if (window.lucide) window.lucide.createIcons();
       }
       return;
     }
@@ -276,6 +295,19 @@ async function sincronizarTicketsYTurnos(silencioso = false) {
 
   } catch (err) {
     if (!silencioso) console.error('Error al sincronizar tickets:', err);
+    if (appState.activeTab === 'responsable') {
+      DOM.ticketsContainer.innerHTML = `
+        <div class="p-8 text-center text-rose-800 bg-rose-50 rounded-xl m-4 border border-rose-200">
+          <i data-lucide="alert-circle" class="w-8 h-8 mx-auto mb-2 text-rose-600"></i>
+          <p class="font-bold text-sm">Error de conexión con Linkaform</p>
+          <p class="text-xs text-rose-600 mt-1">${err.message || 'No se pudo conectar con el servidor'}</p>
+          <button type="button" onclick="sincronizarTicketsYTurnos()" class="mt-3 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-xs shadow-xs">
+            Reintentar Conexión
+          </button>
+        </div>
+      `;
+      if (window.lucide) window.lucide.createIcons();
+    }
   }
 }
 
@@ -587,13 +619,31 @@ function actualizarEstilosFiltros() {
   const activoClass = 'px-2.5 py-1 rounded-lg font-semibold bg-white text-brand-700 shadow-xs transition-colors';
   const inactivoClass = 'px-2.5 py-1 rounded-lg font-semibold text-slate-600 hover:text-slate-900 transition-colors';
 
-  if (DOM.filtroSoloPendientes) DOM.filtroSoloPendientes.className = appState.filtroResponsable === 'pendientes' ? activoClass : inactivoClass;
-  if (DOM.filtroTodos) DOM.filtroTodos.className = appState.filtroResponsable === 'todos' ? activoClass : inactivoClass;
-  if (DOM.filtroSoloFinalizados) DOM.filtroSoloFinalizados.className = appState.filtroResponsable === 'finalizados' ? activoClass : inactivoClass;
-  if (DOM.filtroHistorico) DOM.filtroHistorico.className = appState.filtroResponsable === 'historico' ? activoClass : inactivoClass;
+  const todos = appState.todosLosTickets || [];
+  const pendientesCount = todos.filter(t => String(t.answers[LINKAFORM_CONFIG.fieldIds.estatus] || '').toLowerCase() !== 'finalizado').length;
+  const hoyCount = (appState.ticketsHoy || []).length;
+  const finalizadosCount = todos.filter(t => String(t.answers[LINKAFORM_CONFIG.fieldIds.estatus] || '').toLowerCase() === 'finalizado').length;
+  const totalCount = todos.length;
+
+  if (DOM.filtroSoloPendientes) {
+    DOM.filtroSoloPendientes.className = appState.filtroResponsable === 'pendientes' ? activoClass : inactivoClass;
+    DOM.filtroSoloPendientes.innerHTML = `Pendientes <span class="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-amber-100 text-amber-800 font-bold">${pendientesCount}</span>`;
+  }
+  if (DOM.filtroTodos) {
+    DOM.filtroTodos.className = appState.filtroResponsable === 'todos' ? activoClass : inactivoClass;
+    DOM.filtroTodos.innerHTML = `Hoy <span class="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200 text-slate-700 font-bold">${hoyCount}</span>`;
+  }
+  if (DOM.filtroSoloFinalizados) {
+    DOM.filtroSoloFinalizados.className = appState.filtroResponsable === 'finalizados' ? activoClass : inactivoClass;
+    DOM.filtroSoloFinalizados.innerHTML = `Finalizados <span class="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-100 text-emerald-800 font-bold">${finalizadosCount}</span>`;
+  }
+  if (DOM.filtroHistorico) {
+    DOM.filtroHistorico.className = appState.filtroResponsable === 'historico' ? activoClass : inactivoClass;
+    DOM.filtroHistorico.innerHTML = `Todos <span class="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-blue-100 text-blue-800 font-bold">${totalCount}</span>`;
+  }
 }
 
-function cambiarPestana(tab) {
+async function cambiarPestana(tab) {
   if (tab === 'responsable' && !estaAutenticadoMesa()) {
     abrirModalAuthMesa();
     return;
@@ -618,8 +668,14 @@ function cambiarPestana(tab) {
     DOM.tabResponsable.className = 'px-3.5 py-1.5 rounded-lg bg-white text-brand-700 shadow-xs font-semibold flex items-center space-x-1.5 transition-all';
     DOM.tabContratista.className = 'px-3.5 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 flex items-center space-x-1.5 transition-all';
     if (DOM.btnCerrarSesionMesa) DOM.btnCerrarSesionMesa.classList.remove('hidden');
-    sincronizarTicketsYTurnos();
-    renderizarVistaResponsable();
+    
+    // Si ya tenemos tickets cargados en memoria, renderizarlos de inmediato sin esperar
+    if (appState.todosLosTickets && appState.todosLosTickets.length > 0) {
+      actualizarEstilosFiltros();
+      renderizarVistaResponsable();
+    }
+    
+    await sincronizarTicketsYTurnos();
   }
   if (window.lucide) window.lucide.createIcons();
 }
@@ -918,6 +974,8 @@ function renderizarVistaResponsable() {
   if (DOM.metricFinalizadosTotal) DOM.metricFinalizadosTotal.textContent = finalizadosTotal.length;
   if (DOM.metricTotalHoy) DOM.metricTotalHoy.textContent = totalHoy;
   if (DOM.subtextFoliosHoy) DOM.subtextFoliosHoy.textContent = `Folios de hoy: ${foliosHoySum}`;
+
+  actualizarEstilosFiltros();
 
   // Filtrado de la lista según botón
   let ticketsAMostrar = [];
