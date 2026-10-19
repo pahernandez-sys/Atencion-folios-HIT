@@ -928,7 +928,7 @@ async function handleFormSubmitContratista(e) {
         ],
         [LINKAFORM_CONFIG.fieldIds.numeroFolios]: appState.detectedFoliosCount,
         [LINKAFORM_CONFIG.fieldIds.descripcion]: 'Incidencia reportada por contratista.',
-        [LINKAFORM_CONFIG.fieldIds.estatus]: 'En Progreso'
+        [LINKAFORM_CONFIG.fieldIds.estatus]: 'en_progreso'
       }
     };
 
@@ -1274,7 +1274,7 @@ window.finalizarTicketDesdeWeb = async function(recordId) {
 
     // 3. Fusionar respuestas manteniendo campos requeridos (files, email, etc.)
     const answersActuales = recData.answers || {};
-    answersActuales[LINKAFORM_CONFIG.fieldIds.estatus] = 'Finalizado';
+    answersActuales[LINKAFORM_CONFIG.fieldIds.estatus] = 'finalizado';
     answersActuales[LINKAFORM_CONFIG.fieldIds.numeroFolios] = foliosFinal;
     answersActuales[LINKAFORM_CONFIG.fieldIds.descripcion] = comentariosFinal;
 
