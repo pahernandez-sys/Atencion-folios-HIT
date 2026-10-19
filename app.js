@@ -81,6 +81,63 @@ const appState = {
   responsableTurnoActual: 1
 };
 
+// Almacén de borradores locales en edición para la Mesa de Control (evita pérdidas de texto al tipear o salir del cuadro)
+let borradorRespuestas = {};
+try {
+  const cached = sessionStorage.getItem('mesa_borradores');
+  if (cached) {
+    borradorRespuestas = JSON.parse(cached);
+  }
+} catch (e) {
+  borradorRespuestas = {};
+}
+
+function guardarBorrador(ticketId, campo, valor) {
+  if (!ticketId) return;
+  if (!borradorRespuestas[ticketId]) {
+    borradorRespuestas[ticketId] = {};
+  }
+  borradorRespuestas[ticketId][campo] = valor;
+  try {
+    sessionStorage.setItem('mesa_borradores', JSON.stringify(borradorRespuestas));
+  } catch (e) {}
+}
+
+function limpiarBorrador(ticketId) {
+  if (borradorRespuestas[ticketId]) {
+    delete borradorRespuestas[ticketId];
+    try {
+      sessionStorage.setItem('mesa_borradores', JSON.stringify(borradorRespuestas));
+    } catch (e) {}
+  }
+}
+
+function recopilarBorradoresActualesDelDOM() {
+  if (!DOM.ticketsContainer) return;
+
+  const textareas = DOM.ticketsContainer.querySelectorAll('textarea[id^="comentarios_"]');
+  textareas.forEach(ta => {
+    const tId = ta.id.replace('comentarios_', '');
+    if (ta.value !== undefined && ta.value !== null) {
+      if (!borradorRespuestas[tId]) borradorRespuestas[tId] = {};
+      borradorRespuestas[tId].comentarios = ta.value;
+    }
+  });
+
+  const inputsFolios = DOM.ticketsContainer.querySelectorAll('input[id^="inputFolios_"]');
+  inputsFolios.forEach(inp => {
+    const tId = inp.id.replace('inputFolios_', '');
+    if (inp.value !== undefined && inp.value !== null) {
+      if (!borradorRespuestas[tId]) borradorRespuestas[tId] = {};
+      borradorRespuestas[tId].folios = inp.value;
+    }
+  });
+
+  try {
+    sessionStorage.setItem('mesa_borradores', JSON.stringify(borradorRespuestas));
+  } catch (e) {}
+}
+
 // Elementos del DOM
 const DOM = {
   tabContratista: document.getElementById('tabContratista'),
@@ -329,7 +386,16 @@ async function sincronizarTicketsYTurnos(silencioso = false) {
     // Actualizar métricas y tablero de turnos
     actualizarTableroTurnos();
     if (appState.activeTab === 'responsable') {
-      renderizarVistaResponsable();
+      const elementoActivo = document.activeElement;
+      const usuarioInteractuandoEnTickets = elementoActivo && DOM.ticketsContainer && DOM.ticketsContainer.contains(elementoActivo);
+
+      // Si es una sincronización periódica silenciosa y el usuario está escribiendo o interactuando en la lista,
+      // solo actualizamos las métricas y badges superiores sin alterar el DOM de las tarjetas.
+      if (silencioso && usuarioInteractuandoEnTickets) {
+        actualizarEstilosFiltros();
+      } else {
+        renderizarVistaResponsable();
+      }
     }
 
   } catch (err) {
@@ -559,6 +625,25 @@ function setupEventListeners() {
   // Exportar histórico completo a Excel
   if (DOM.btnExportarExcel) {
     DOM.btnExportarExcel.addEventListener('click', exportarHistoricoExcel);
+  }
+
+  // Delegación de eventos en ticketsContainer para retener comentarios y folios en tiempo real
+  if (DOM.ticketsContainer) {
+    const capturarDatoInput = (e) => {
+      const target = e.target;
+      if (!target || !target.id) return;
+      if (target.id.startsWith('comentarios_')) {
+        const tId = target.id.replace('comentarios_', '');
+        guardarBorrador(tId, 'comentarios', target.value);
+      } else if (target.id.startsWith('inputFolios_')) {
+        const tId = target.id.replace('inputFolios_', '');
+        guardarBorrador(tId, 'folios', target.value);
+      }
+    };
+
+    DOM.ticketsContainer.addEventListener('input', capturarDatoInput);
+    DOM.ticketsContainer.addEventListener('change', capturarDatoInput);
+    DOM.ticketsContainer.addEventListener('focusout', capturarDatoInput);
   }
 
   // Eventos de Autenticación de Mesa de Control (PIN 3546 o 7890)
@@ -998,6 +1083,9 @@ async function handleFormSubmitContratista(e) {
  * RENDERIZADO DE LA VISTA DE LA RESPONSABLE (MESA DE CONTROL)
  */
 function renderizarVistaResponsable() {
+  // Salvar primero cualquier texto de comentarios o folios que esté tipeado actualmente en el DOM
+  recopilarBorradoresActualesDelDOM();
+
   if (!appState.jwtToken) {
     if (DOM.metricTotalHistorico) DOM.metricTotalHistorico.textContent = '--';
     if (DOM.metricPendientesTotal) DOM.metricPendientesTotal.textContent = '--';
@@ -1119,6 +1207,19 @@ function renderizarVistaResponsable() {
 
     const esFinalizado = estatus === 'finalizado';
     
+    // Determinar valores de folios y comentarios considerando borradores
+    const borrador = borradorRespuestas[ticket.id] || {};
+    const valorFolios = (!esFinalizado && borrador.folios !== undefined) ? borrador.folios : numFolios;
+
+    let valorComentarios = '';
+    if (!esFinalizado && borrador.comentarios !== undefined) {
+      valorComentarios = borrador.comentarios;
+    } else if (esFinalizado) {
+      valorComentarios = comentarios;
+    } else {
+      valorComentarios = (comentarios && comentarios !== 'Incidencia reportada por contratista.') ? comentarios : '';
+    }
+
     let fechaHora = '--';
     if (ticket.created_at) {
       const d = new Date(ticket.created_at * 1000);
@@ -1195,7 +1296,7 @@ function renderizarVistaResponsable() {
             <!-- Número de Folios (Automático / Editable) -->
             <div class="flex items-center space-x-1.5 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
               <span class="text-[11px] text-slate-500 font-medium">Folios en Excel:</span>
-              <input type="number" id="inputFolios_${ticket.id}" value="${numFolios}" min="1" 
+              <input type="number" id="inputFolios_${ticket.id}" value="${valorFolios}" min="1" 
                 class="w-16 px-1.5 py-0.5 bg-white border border-slate-300 rounded text-center text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-brand-500"
                 ${esFinalizado ? 'disabled' : ''}>
             </div>
@@ -1209,7 +1310,7 @@ function renderizarVistaResponsable() {
           </label>
           <textarea id="comentarios_${ticket.id}" rows="2" placeholder="Observaciones para el contratista..."
             class="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-brand-500 resize-none"
-            ${esFinalizado ? 'disabled' : ''}>${comentarios}</textarea>
+            ${esFinalizado ? 'disabled' : ''}></textarea>
 
           ${!esFinalizado ? `
             <button type="button" onclick="finalizarTicketDesdeWeb('${ticket.id}')"
@@ -1227,6 +1328,16 @@ function renderizarVistaResponsable() {
 
       </div>
     `;
+
+    // Asignar los valores directamente a los elementos del DOM para evitar problemas de escape y retener cursor/texto
+    const taElem = card.querySelector(`#comentarios_${ticket.id}`);
+    if (taElem) {
+      taElem.value = valorComentarios;
+    }
+    const inpFolioElem = card.querySelector(`#inputFolios_${ticket.id}`);
+    if (inpFolioElem) {
+      inpFolioElem.value = valorFolios;
+    }
 
     DOM.ticketsContainer.appendChild(card);
   });
@@ -1265,12 +1376,20 @@ window.finalizarTicketDesdeWeb = async function(recordId) {
     if (!getRes.ok) throw new Error('No se pudo recuperar el registro de Linkaform');
     const recData = await getRes.json();
 
-    // 2. Extraer valores del formulario en pantalla
+    // 2. Extraer valores del formulario en pantalla o borrador
     const inputFolios = document.getElementById(`inputFolios_${recordId}`);
     const inputComentarios = document.getElementById(`comentarios_${recordId}`);
 
-    const foliosFinal = inputFolios ? parseInt(inputFolios.value, 10) || 1 : 1;
-    const comentariosFinal = inputComentarios ? inputComentarios.value.trim() : 'Incidencia de folios HIT regularizada.';
+    const foliosFinal = inputFolios ? (parseInt(inputFolios.value, 10) || 1) : (borradorRespuestas[recordId]?.folios ? parseInt(borradorRespuestas[recordId].folios, 10) : 1);
+    
+    let comentariosFinal = '';
+    if (inputComentarios && inputComentarios.value.trim()) {
+      comentariosFinal = inputComentarios.value.trim();
+    } else if (borradorRespuestas[recordId]?.comentarios && borradorRespuestas[recordId].comentarios.trim()) {
+      comentariosFinal = borradorRespuestas[recordId].comentarios.trim();
+    } else {
+      comentariosFinal = 'Incidencia de folios HIT regularizada y atendida.';
+    }
 
     // 3. Fusionar respuestas manteniendo campos requeridos (files, email, etc.)
     const answersActuales = recData.answers || {};
@@ -1299,12 +1418,15 @@ window.finalizarTicketDesdeWeb = async function(recordId) {
       throw new Error(`Error en Linkaform (${patchRes.status}): ${errTxt}`);
     }
 
+    // Limpiar el borrador guardado para este ticket ya que ha sido finalizado con éxito
+    limpiarBorrador(recordId);
+
     // 5. Refrescar datos
     await sincronizarTicketsYTurnos(true);
     ocultarLoading();
 
     const contratistaEmail = answersActuales[LINKAFORM_CONFIG.fieldIds.email] || '';
-    alert(`¡Ticket Finalizado con éxito!\n\nRegistrado en Linkaform por: ${responsable.nombre} (${responsable.email})\nSe disparó el correo automático a: ${contratistaEmail}`);
+    alert(`¡Ticket Finalizado con éxito!\n\nRegistrado en Linkaform por: ${responsable.nombre} (${responsable.email})\nComentarios de resolución: "${comentariosFinal}"\nSe disparó el correo automático a: ${contratistaEmail}`);
 
   } catch (err) {
     console.error('Error al finalizar ticket:', err);

@@ -9,3 +9,7 @@ Thumbs.db
 __pycache__/
 *.pyc
 .env
+
+# Archivos temporales de Office / Excel
+~$*
+De prueba.xlsx
