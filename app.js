@@ -78,7 +78,8 @@ const appState = {
   ticketsHoy: [],
   filtroResponsable: 'pendientes', // 'pendientes' | 'todos' | 'finalizados' | 'historico'
   busquedaFiltro: '',
-  responsableTurnoActual: 1
+  responsableTurnoActual: 1,
+  ultimoTelefonoConsultado: null
 };
 
 // Almacén de borradores locales en edición para la Mesa de Control (evita pérdidas de texto al tipear o salir del cuadro)
@@ -174,6 +175,17 @@ const DOM = {
   telefonoError: document.getElementById('telefonoError'),
   emailError: document.getElementById('emailError'),
   fileError: document.getElementById('fileError'),
+
+  // Consulta de Estatus de Folios por Teléfono (Contratistas)
+  formConsultaContratista: document.getElementById('formConsultaContratista'),
+  inputConsultaTelefono: document.getElementById('inputConsultaTelefono'),
+  btnBuscarConsulta: document.getElementById('btnBuscarConsulta'),
+  errorConsultaTelefono: document.getElementById('errorConsultaTelefono'),
+  errorConsultaTelefonoMsg: document.getElementById('errorConsultaTelefonoMsg'),
+  contenedorResultadosConsulta: document.getElementById('contenedorResultadosConsulta'),
+  resumenConteoConsulta: document.getElementById('resumenConteoConsulta'),
+  btnCerrarConsulta: document.getElementById('btnCerrarConsulta'),
+  listaResultadosConsulta: document.getElementById('listaResultadosConsulta'),
 
   // Vista Responsable (Mesa de Control & Histórico Linkaform)
   responsableTurnoActualText: document.getElementById('responsableTurnoActualText'),
@@ -385,6 +397,11 @@ async function sincronizarTicketsYTurnos(silencioso = false) {
 
     // Actualizar métricas y tablero de turnos
     actualizarTableroTurnos();
+
+    // Si hay una consulta de folios activa en la vista de contratistas, actualizarla en vivo
+    if (appState.ultimoTelefonoConsultado) {
+      renderizarResultadosConsulta(appState.ultimoTelefonoConsultado, true);
+    }
     if (appState.activeTab === 'responsable') {
       const elementoActivo = document.activeElement;
       const usuarioInteractuandoEnTickets = elementoActivo && DOM.ticketsContainer && DOM.ticketsContainer.contains(elementoActivo);
@@ -514,6 +531,231 @@ function recuperarMiTurnoLocal() {
 }
 
 /**
+ * Oculta y enmascara un correo electrónico para privacidad en la consulta pública
+ * ej. pahernandez@operacionpci.com.mx -> pah***@operacionpci.com.mx
+ */
+function enmascararEmail(email) {
+  if (!email || typeof email !== 'string' || !email.includes('@')) return email || '';
+  const [user, domain] = email.split('@');
+  if (user.length <= 2) {
+    return `${user[0] || ''}***@${domain}`;
+  }
+  return `${user.slice(0, 3)}***@${domain}`;
+}
+
+/**
+ * Consulta y despliega el historial completo de folios de un contratista por su número de teléfono
+ */
+async function consultarTicketsPorTelefono(telefono) {
+  const telLimpio = String(telefono || '').replace(/\D/g, '');
+  if (telLimpio.length !== 10) {
+    if (DOM.errorConsultaTelefonoMsg) DOM.errorConsultaTelefonoMsg.textContent = 'Por favor ingresa tu número telefónico completo a 10 dígitos.';
+    if (DOM.errorConsultaTelefono) DOM.errorConsultaTelefono.classList.remove('hidden');
+    return;
+  }
+
+  if (DOM.errorConsultaTelefono) DOM.errorConsultaTelefono.classList.add('hidden');
+  appState.ultimoTelefonoConsultado = telLimpio;
+
+  if (DOM.btnBuscarConsulta) {
+    DOM.btnBuscarConsulta.disabled = true;
+    DOM.btnBuscarConsulta.innerHTML = '<span class="inline-block animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-1.5"></span><span>Consultando...</span>';
+  }
+
+  try {
+    // Si la lista de tickets está vacía o no se ha sincronizado, consultar Linkaform
+    if (!appState.todosLosTickets || appState.todosLosTickets.length === 0) {
+      await sincronizarTicketsYTurnos(true);
+    }
+  } catch (err) {
+    console.warn('Error al sincronizar tickets antes de consulta:', err);
+  } finally {
+    if (DOM.btnBuscarConsulta) {
+      DOM.btnBuscarConsulta.disabled = false;
+      DOM.btnBuscarConsulta.innerHTML = '<i data-lucide="search" class="w-4 h-4"></i><span>Consultar Mis Folios</span>';
+      if (window.lucide) window.lucide.createIcons();
+    }
+  }
+
+  renderizarResultadosConsulta(telLimpio);
+}
+
+/**
+ * Renderiza la lista de folios encontrados para el contratista
+ */
+function renderizarResultadosConsulta(telLimpio, silencioso = false) {
+  if (!DOM.contenedorResultadosConsulta || !DOM.listaResultadosConsulta) return;
+
+  const todos = appState.todosLosTickets || [];
+  const tickets = todos.filter(t => {
+    const a = t.answers || {};
+    const tTel = String(a[LINKAFORM_CONFIG.fieldIds.telefono] || '').replace(/\D/g, '');
+    return tTel === telLimpio || tTel.endsWith(telLimpio) || (telLimpio.length >= 8 && tTel.includes(telLimpio));
+  });
+
+  // Ordenar del más reciente al más antiguo
+  tickets.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+
+  DOM.contenedorResultadosConsulta.classList.remove('hidden');
+
+  if (tickets.length === 0) {
+    if (DOM.resumenConteoConsulta) {
+      DOM.resumenConteoConsulta.textContent = `Resultados para: ${telLimpio}`;
+    }
+    DOM.listaResultadosConsulta.innerHTML = `
+      <div class="p-6 text-center text-slate-500 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+        <div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
+          <i data-lucide="search-x" class="w-5 h-5"></i>
+        </div>
+        <p class="text-xs font-bold text-slate-700">No se encontraron tickets registrados con el teléfono ${telLimpio}.</p>
+        <p class="text-[11px] text-slate-400 max-w-sm mx-auto">
+          Verifica haber ingresado los mismos 10 dígitos que colocaste al enviar tu reporte en el formulario.
+        </p>
+      </div>
+    `;
+    if (window.lucide) window.lucide.createIcons();
+    return;
+  }
+
+  if (DOM.resumenConteoConsulta) {
+    DOM.resumenConteoConsulta.innerHTML = `Historial de <strong class="text-brand-700 font-bold">${tickets.length}</strong> folio${tickets.length !== 1 ? 's' : ''} para el teléfono <strong>${telLimpio}</strong>:`;
+  }
+
+  DOM.listaResultadosConsulta.innerHTML = '';
+
+  tickets.forEach(ticket => {
+    const answers = ticket.answers || {};
+    const folio = ticket.folio || ticket.id || 'Sin folio';
+    const numFolios = answers[LINKAFORM_CONFIG.fieldIds.numeroFolios] || 0;
+    const estatus = String(answers[LINKAFORM_CONFIG.fieldIds.estatus] || 'en_progreso').toLowerCase();
+    const comentarios = answers[LINKAFORM_CONFIG.fieldIds.descripcion] || '';
+    const email = answers[LINKAFORM_CONFIG.fieldIds.email] || '';
+    const excelFiles = answers[LINKAFORM_CONFIG.fieldIds.excel] || [];
+    const primerArchivo = Array.isArray(excelFiles) && excelFiles.length > 0 ? excelFiles[0] : null;
+
+    const esFinalizado = estatus === 'finalizado';
+    const esDeHoy = typeof ticket.turnoDia === 'number';
+
+    let fechaHoraStr = '--';
+    if (ticket.created_at) {
+      const d = new Date(ticket.created_at * 1000);
+      fechaHoraStr = d.toLocaleDateString('es-MX', {
+        weekday: 'short',
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+
+    let detalleBloque = '';
+    if (esFinalizado) {
+      detalleBloque = `
+        <div class="bg-emerald-50 rounded-xl p-3.5 border border-emerald-200 space-y-2">
+          <div class="flex items-center space-x-1.5 text-emerald-800 text-xs font-bold">
+            <i data-lucide="check-circle" class="w-4 h-4 text-emerald-600"></i>
+            <span>Folio Atendido y Finalizado</span>
+          </div>
+          <div class="text-xs text-slate-700 bg-white p-2.5 rounded-lg border border-emerald-100 shadow-2xs">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">Comentarios de Resolución (Mesa de Control):</span>
+            <p class="font-medium text-slate-800 leading-relaxed">${comentarios && comentarios !== 'Incidencia reportada por contratista.' ? comentarios : 'Incidencia regularizada y resuelta en HIT.'}</p>
+          </div>
+          <div class="flex flex-wrap items-center justify-between text-[11px] text-emerald-800/90 pt-0.5 gap-2">
+            <span>👤 Atendido por: <strong>${ticket.updated_by_name || ticket.updated_by_email || 'Mesa de Control HIT'}</strong></span>
+            ${email ? `<span>📧 Confirmación enviada a: <strong>${enmascararEmail(email)}</strong></span>` : ''}
+          </div>
+        </div>
+      `;
+    } else {
+      let posicionTurnoMensaje = '';
+      if (esDeHoy) {
+        const miTurno = ticket.turnoDia;
+        const turnoActual = appState.responsableTurnoActual || 1;
+        if (turnoActual === miTurno) {
+          posicionTurnoMensaje = `<span class="text-amber-900 font-bold animate-pulse">⚡ ¡Tu turno (#${miTurno}) está en atención en este momento por la Mesa de Control!</span>`;
+        } else if (turnoActual < miTurno) {
+          const faltan = miTurno - turnoActual;
+          posicionTurnoMensaje = `Mesa de Control está atendiendo el Turno #${turnoActual}. Faltan <strong>${faltan} turno${faltan > 1 ? 's' : ''}</strong> antes del tuyo.`;
+        } else {
+          posicionTurnoMensaje = `Tu turno (#${miTurno}) está en revisión técnica por la responsable.`;
+        }
+      } else {
+        posicionTurnoMensaje = `Incidencia de fecha previa en proceso de revisión por la Mesa de Control.`;
+      }
+
+      detalleBloque = `
+        <div class="bg-amber-50 rounded-xl p-3.5 border border-amber-200 space-y-1.5 text-xs text-amber-900">
+          <div class="flex items-center space-x-1.5 font-bold text-amber-900">
+            <i data-lucide="clock" class="w-4 h-4 text-amber-600"></i>
+            <span>En Proceso de Atención</span>
+          </div>
+          <p class="text-xs text-amber-900/90 leading-relaxed pl-5">
+            ${posicionTurnoMensaje}
+          </p>
+          ${email ? `<p class="text-[11px] text-amber-800/80 pl-5">Al finalizar, Linkaform te notificará por correo a <strong>${enmascararEmail(email)}</strong>.</p>` : ''}
+        </div>
+      `;
+    }
+
+    const card = document.createElement('div');
+    card.className = `p-4 rounded-xl border ${esFinalizado ? 'bg-white border-slate-200' : 'bg-white border-amber-200 shadow-2xs'} space-y-3`;
+    card.innerHTML = `
+      <div class="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-100">
+        <div class="flex flex-wrap items-center gap-2">
+          ${esDeHoy ? `
+            <span class="px-2 py-0.5 rounded-lg text-xs font-black font-mono ${esFinalizado ? 'bg-slate-100 text-slate-700' : 'bg-amber-100 text-amber-900 border border-amber-300'}">
+              TURNO #${ticket.turnoDia} (HOY)
+            </span>
+          ` : `
+            <span class="px-2 py-0.5 rounded-lg text-xs font-mono font-bold bg-slate-100 text-slate-600 border border-slate-200">
+              HISTÓRICO
+            </span>
+          `}
+          <span class="text-xs font-mono text-slate-500 bg-slate-50 px-2 py-0.5 rounded">
+            Folio: <strong>${folio}</strong>
+          </span>
+        </div>
+
+        <!-- Badge Estatus -->
+        <span class="px-2.5 py-0.5 rounded-full text-xs font-bold ${esFinalizado ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800 animate-pulse'}">
+          ${esFinalizado ? '✓ Finalizado' : '⚡ En Proceso'}
+        </span>
+      </div>
+
+      <div class="flex flex-wrap items-center justify-between text-xs text-slate-500 gap-2">
+        <span>🕒 Registro: <strong>${fechaHoraStr}</strong></span>
+        <span>📊 Folios reportados: <strong>${numFolios}</strong></span>
+        ${primerArchivo && primerArchivo.file_url ? `
+          <a href="${primerArchivo.file_url}" target="_blank" rel="noopener noreferrer" class="text-brand-600 hover:underline flex items-center space-x-1 font-semibold">
+            <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i>
+            <span>Descargar Excel</span>
+          </a>
+        ` : ''}
+      </div>
+
+      <!-- Detalle de estado / resolución -->
+      ${detalleBloque}
+    `;
+
+    DOM.listaResultadosConsulta.appendChild(card);
+  });
+
+  if (window.lucide) window.lucide.createIcons();
+}
+
+/**
+ * Limpia y oculta los resultados de la consulta de folios
+ */
+function limpiarConsultaContratista() {
+  appState.ultimoTelefonoConsultado = null;
+  if (DOM.inputConsultaTelefono) DOM.inputConsultaTelefono.value = '';
+  if (DOM.errorConsultaTelefono) DOM.errorConsultaTelefono.classList.add('hidden');
+  if (DOM.contenedorResultadosConsulta) DOM.contenedorResultadosConsulta.classList.add('hidden');
+  if (DOM.listaResultadosConsulta) DOM.listaResultadosConsulta.innerHTML = '';
+}
+
+/**
  * Configuración de Eventos de la Interfaz
  */
 function setupEventListeners() {
@@ -546,6 +788,26 @@ function setupEventListeners() {
   DOM.telefono.addEventListener('input', (e) => {
     e.target.value = e.target.value.replace(/\D/g, '').slice(0, 10);
   });
+
+  // Consulta de Estatus de Folios por Teléfono (Contratistas)
+  if (DOM.inputConsultaTelefono) {
+    DOM.inputConsultaTelefono.addEventListener('input', (e) => {
+      e.target.value = e.target.value.replace(/\D/g, '').slice(0, 10);
+      if (DOM.errorConsultaTelefono) DOM.errorConsultaTelefono.classList.add('hidden');
+    });
+  }
+
+  if (DOM.formConsultaContratista) {
+    DOM.formConsultaContratista.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const tel = DOM.inputConsultaTelefono ? DOM.inputConsultaTelefono.value.trim() : '';
+      consultarTicketsPorTelefono(tel);
+    });
+  }
+
+  if (DOM.btnCerrarConsulta) {
+    DOM.btnCerrarConsulta.addEventListener('click', limpiarConsultaContratista);
+  }
 
   // Envío del Formulario Contratista
   DOM.formContratista.addEventListener('submit', handleFormSubmitContratista);
@@ -1061,6 +1323,11 @@ async function handleFormSubmitContratista(e) {
     DOM.modalFolioDisplay.textContent = folioAsignado;
     DOM.modalEmailDisplay.textContent = DOM.email.value.trim();
     DOM.successModal.classList.remove('hidden');
+
+    // Pre-llenar el buscador de folios para que el contratista pueda consultar con 1 clic
+    if (DOM.inputConsultaTelefono && DOM.telefono.value.trim()) {
+      DOM.inputConsultaTelefono.value = DOM.telefono.value.trim();
+    }
 
     actualizarTableroTurnos();
 
