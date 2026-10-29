@@ -2339,6 +2339,32 @@ async function cargarErroresAnaKaren(forzar = false, silencioso = false) {
 }
 
 /**
+ * Actualiza los estilos visuales y contadores de los botones de filtro de Ana Karen
+ */
+function actualizarEstilosFiltrosAnaKaren() {
+  const activoClass = 'px-2.5 py-1 rounded-lg font-semibold bg-white text-purple-700 shadow-xs transition-colors';
+  const inactivoClass = 'px-2.5 py-1 rounded-lg font-semibold text-slate-600 hover:text-slate-900 transition-colors';
+
+  const revisados = obtenerRevisadosAnaKaren();
+  const items = appState.anaKarenItems || [];
+  const atendidosCount = items.filter(it => !!revisados[it.id]?.revisado).length;
+  const pendientesCount = items.length - atendidosCount;
+
+  if (DOM.filtroAnaKarenPendientes) {
+    DOM.filtroAnaKarenPendientes.className = appState.anaKarenFiltroEstatus === 'pendientes' ? activoClass : inactivoClass;
+    DOM.filtroAnaKarenPendientes.innerHTML = `Pendientes <span class="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-amber-100 text-amber-800 font-bold">${pendientesCount}</span>`;
+  }
+  if (DOM.filtroAnaKarenRevisados) {
+    DOM.filtroAnaKarenRevisados.className = appState.anaKarenFiltroEstatus === 'revisados' ? activoClass : inactivoClass;
+    DOM.filtroAnaKarenRevisados.innerHTML = `Atendidos <span class="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-100 text-emerald-800 font-bold">${atendidosCount}</span>`;
+  }
+  if (DOM.filtroAnaKarenTodos) {
+    DOM.filtroAnaKarenTodos.className = appState.anaKarenFiltroEstatus === 'todos' ? activoClass : inactivoClass;
+    DOM.filtroAnaKarenTodos.innerHTML = `Todos <span class="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-purple-100 text-purple-800 font-bold">${items.length}</span>`;
+  }
+}
+
+/**
  * Renderiza la lista consolidada de errores filtrada en tiempo real
  */
 function renderizarErroresAnaKaren() {
