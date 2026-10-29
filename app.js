@@ -41,6 +41,13 @@ const RESPONSABLES_CONFIG = [
 ];
 
 // Configuración de la Colaboradora para Revisión Especial de Errores (Ana Karen)
+// Configuración de Acceso a Dashboard Operativo
+const DASHBOARD_CONFIG = {
+  id: 'dashboard',
+  nombre: 'Dashboard Operativo',
+  pinHash: 'f3e055913a0b1eb0f07317896f9a1bc466b9a50db85a7f882f3ffde9ffb23aca' // PIN: 1357
+};
+
 const ANA_KAREN_CONFIG = {
   id: 'anakaren',
   nombre: 'Ana Karen',
@@ -57,7 +64,8 @@ async function calcularSha256(texto) {
   // Fallbacks seguros
   if (texto === '3546') return 'e8743787bbef7d5ffb65a3a13f7c51a90b3ce8b263b94b7bb3aeb7d35b7fa1ad';
   if (texto === '7890') return '6a95bbab63d587b596398c4bd7e91a132f24032d2007d107e5ea71967724b092';
-  if (texto === '2468') return 'a1fb4e703a9ef1fa4936801721ff285a97ac85330856674412e054892afe6972';
+    if (texto === '2468') return 'a1fb4e703a9ef1fa4936801721ff285a97ac85330856674412e054892afe6972';
+  if (texto === '1357') return 'f3e055913a0b1eb0f07317896f9a1bc466b9a50db85a7f882f3ffde9ffb23aca';
   return 'invalido';
 }
 
@@ -71,6 +79,18 @@ function estaAutenticadoMesa() {
     }
   }
   appState.usuarioActivo = null;
+  return false;
+}
+
+function estaAutenticadoDashboard() {
+  const status = sessionStorage.getItem('dashboard_auth_status');
+  const authTime = parseInt(sessionStorage.getItem('dashboard_auth_time') || '0', 10);
+  const now = Date.now();
+  if (status === 'autenticado' && (now - authTime < 8 * 60 * 60 * 1000)) {
+    appState.dashboardAutenticado = true;
+    return true;
+  }
+  appState.dashboardAutenticado = false;
   return false;
 }
 
@@ -105,7 +125,15 @@ const appState = {
   anaKarenCargando: false,
   anaKarenFiltroTipo: 'todos',
   anaKarenFiltroEstatus: 'pendientes', // 'pendientes' | 'revisados' | 'todos'
-  anaKarenBusqueda: ''
+  anaKarenBusqueda: '',
+
+  // Módulo Dashboard Operativo
+  dashboardAutenticado: false,
+  dashboardFiltroPeriodo: 'todos', // 'todos' | 'hoy' | 'semana' | 'mes'
+  dashboardBusquedaContratista: '',
+  dashboardExcelsAnalizados: false,
+  dashboardErroresExtraidos: [],
+  dashboardCargandoExcels: false
 };
 
 // Almacén de borradores locales en edición para la Mesa de Control (evita pérdidas de texto al tipear o salir del cuadro)
@@ -290,7 +318,47 @@ const DOM = {
   btnToggleVerPinAnaKaren: document.getElementById('btnToggleVerPinAnaKaren'),
   iconVerPinAnaKaren: document.getElementById('iconVerPinAnaKaren'),
   errorPinAnaKaren: document.getElementById('errorPinAnaKaren'),
-  btnCancelarAuthAnaKaren: document.getElementById('btnCancelarAuthAnaKaren')
+  btnCancelarAuthAnaKaren: document.getElementById('btnCancelarAuthAnaKaren'),
+
+  // Módulo Dashboard Operativo
+  tabDashboard: document.getElementById('tabDashboard'),
+  btnCerrarSesionDashboard: document.getElementById('btnCerrarSesionDashboard'),
+  btnCerrarSesionDashboardInline: document.getElementById('btnCerrarSesionDashboardInline'),
+  vistaDashboard: document.getElementById('vistaDashboard'),
+  btnFiltroDashboardTodos: document.getElementById('btnFiltroDashboardTodos'),
+  btnFiltroDashboardHoy: document.getElementById('btnFiltroDashboardHoy'),
+  btnFiltroDashboardSemana: document.getElementById('btnFiltroDashboardSemana'),
+  btnFiltroDashboardMes: document.getElementById('btnFiltroDashboardMes'),
+  btnRecargarDashboard: document.getElementById('btnRecargarDashboard'),
+  btnExportarExcelDashboard: document.getElementById('btnExportarExcelDashboard'),
+  btnReescanearExcelsDashboard: document.getElementById('btnReescanearExcelsDashboard'),
+  inputBuscarContratistaDashboard: document.getElementById('inputBuscarContratistaDashboard'),
+  kpiDashboardTiempoPromedio: document.getElementById('kpiDashboardTiempoPromedio'),
+  kpiDashboardTiempoExtremos: document.getElementById('kpiDashboardTiempoExtremos'),
+  kpiDashboardTasaResolucion: document.getElementById('kpiDashboardTasaResolucion'),
+  kpiDashboardConteoResolucion: document.getElementById('kpiDashboardConteoResolucion'),
+  kpiDashboardTotalFolios: document.getElementById('kpiDashboardTotalFolios'),
+  kpiDashboardPromedioFolios: document.getElementById('kpiDashboardPromedioFolios'),
+  kpiDashboardTotalTickets: document.getElementById('kpiDashboardTotalTickets'),
+  kpiDashboardContratistasUnicos: document.getElementById('kpiDashboardContratistasUnicos'),
+  contenedorDistribucionTiempos: document.getElementById('contenedorDistribucionTiempos'),
+  contenedorResponsablesProductividad: document.getElementById('contenedorResponsablesProductividad'),
+  contenedorTiposErrorDashboard: document.getElementById('contenedorTiposErrorDashboard'),
+  badgeTotalTiposError: document.getElementById('badgeTotalTiposError'),
+  badgeTotalContratistas: document.getElementById('badgeTotalContratistas'),
+  tablaContratistasDashboard: document.getElementById('tablaContratistasDashboard'),
+  progresoDashboardExcels: document.getElementById('progresoDashboardExcels'),
+  progresoDashboardTexto: document.getElementById('progresoDashboardTexto'),
+  progresoDashboardBarra: document.getElementById('progresoDashboardBarra'),
+
+  // Auth Dashboard
+  modalAuthDashboard: document.getElementById('modalAuthDashboard'),
+  formAuthDashboard: document.getElementById('formAuthDashboard'),
+  inputPinDashboard: document.getElementById('inputPinDashboard'),
+  btnToggleVerPinDashboard: document.getElementById('btnToggleVerPinDashboard'),
+  iconVerPinDashboard: document.getElementById('iconVerPinDashboard'),
+  errorPinDashboard: document.getElementById('errorPinDashboard'),
+  btnCancelarAuthDashboard: document.getElementById('btnCancelarAuthDashboard')
 };
 
 // Inicialización de la aplicación
@@ -1222,6 +1290,98 @@ function setupEventListeners() {
       if (window.lucide) window.lucide.createIcons();
     });
   }
+
+  // Listeners de Dashboard Operativo
+  if (DOM.tabDashboard) {
+    DOM.tabDashboard.addEventListener('click', () => cambiarPestana('dashboard'));
+  }
+  if (DOM.btnCerrarSesionDashboard) {
+    DOM.btnCerrarSesionDashboard.addEventListener('click', cerrarSesionDashboard);
+  }
+  if (DOM.btnCerrarSesionDashboardInline) {
+    DOM.btnCerrarSesionDashboardInline.addEventListener('click', cerrarSesionDashboard);
+  }
+
+  if (DOM.formAuthDashboard) {
+    DOM.formAuthDashboard.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const pin = DOM.inputPinDashboard.value.trim();
+      if (!pin) return;
+
+      const hash = await calcularSha256(pin);
+      const esPinDashboard = (hash === DASHBOARD_CONFIG.pinHash) || (pin === '1357');
+      const esPinMesa = RESPONSABLES_CONFIG.some(r => r.pinHash === hash) || pin === '3546' || pin === '7890';
+      const esPinTAC = (typeof ANA_KAREN_CONFIG !== 'undefined' && hash === ANA_KAREN_CONFIG.pinHash) || pin === '2468';
+
+      if (esPinDashboard || esPinMesa || esPinTAC) {
+        sessionStorage.setItem('dashboard_auth_status', 'autenticado');
+        sessionStorage.setItem('dashboard_auth_time', Date.now().toString());
+        appState.dashboardAutenticado = true;
+        cerrarModalAuthDashboard();
+        cambiarPestana('dashboard');
+      } else {
+        DOM.errorPinDashboard.classList.remove('hidden');
+      }
+    });
+  }
+
+  if (DOM.btnCancelarAuthDashboard) {
+    DOM.btnCancelarAuthDashboard.addEventListener('click', cerrarModalAuthDashboard);
+  }
+
+  if (DOM.btnToggleVerPinDashboard) {
+    DOM.btnToggleVerPinDashboard.addEventListener('click', () => {
+      const isPassword = DOM.inputPinDashboard.type === 'password';
+      DOM.inputPinDashboard.type = isPassword ? 'text' : 'password';
+      DOM.iconVerPinDashboard.setAttribute('data-lucide', isPassword ? 'eye-off' : 'eye');
+      if (window.lucide) window.lucide.createIcons();
+    });
+  }
+
+  // Filtros de período del dashboard
+  const botonesPeriodo = [
+    { btn: DOM.btnFiltroDashboardTodos, val: 'todos' },
+    { btn: DOM.btnFiltroDashboardHoy, val: 'hoy' },
+    { btn: DOM.btnFiltroDashboardSemana, val: 'semana' },
+    { btn: DOM.btnFiltroDashboardMes, val: 'mes' }
+  ];
+  botonesPeriodo.forEach(({ btn, val }) => {
+    if (btn) {
+      btn.addEventListener('click', () => {
+        appState.dashboardFiltroPeriodo = val;
+        actualizarEstilosFiltrosPeriodoDashboard();
+        renderizarDashboardOperativo();
+      });
+    }
+  });
+
+  if (DOM.btnRecargarDashboard) {
+    DOM.btnRecargarDashboard.addEventListener('click', async () => {
+      DOM.btnRecargarDashboard.disabled = true;
+      DOM.btnRecargarDashboard.innerHTML = '<span class="inline-block animate-spin w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full mr-1"></span><span>Actualizando...</span>';
+      await sincronizarTicketsYTurnos(true);
+      renderizarDashboardOperativo();
+      DOM.btnRecargarDashboard.disabled = false;
+      DOM.btnRecargarDashboard.innerHTML = '<i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i><span>Actualizar</span>';
+      if (window.lucide) window.lucide.createIcons();
+    });
+  }
+
+  if (DOM.btnExportarExcelDashboard) {
+    DOM.btnExportarExcelDashboard.addEventListener('click', exportarDashboardExcel);
+  }
+
+  if (DOM.btnReescanearExcelsDashboard) {
+    DOM.btnReescanearExcelsDashboard.addEventListener('click', () => analizarExcelsParaDashboard(true));
+  }
+
+  if (DOM.inputBuscarContratistaDashboard) {
+    DOM.inputBuscarContratistaDashboard.addEventListener('input', (e) => {
+      appState.dashboardBusquedaContratista = e.target.value.toLowerCase().trim();
+      const filtrados = obtenerTicketsFiltradosDashboard();
+      renderizarTablaContratistasDashboard(filtrados);
+    });
+  }
 }
 
 function abrirModalAuthMesa() {
@@ -1266,6 +1426,29 @@ function cerrarModalAuthAnaKaren() {
 function cerrarSesionAnaKaren() {
   sessionStorage.removeItem('ana_karen_autenticada');
   appState.anaKarenAutenticada = false;
+  actualizarBotonesCerrarSesion();
+  cambiarPestana('contratista');
+}
+
+function abrirModalAuthDashboard() {
+  if (DOM.inputPinDashboard) DOM.inputPinDashboard.value = '';
+  if (DOM.errorPinDashboard) DOM.errorPinDashboard.classList.add('hidden');
+  if (DOM.modalAuthDashboard) DOM.modalAuthDashboard.classList.remove('hidden');
+  setTimeout(() => {
+    if (DOM.inputPinDashboard) DOM.inputPinDashboard.focus();
+  }, 100);
+}
+
+function cerrarModalAuthDashboard() {
+  if (DOM.modalAuthDashboard) DOM.modalAuthDashboard.classList.add('hidden');
+  if (DOM.inputPinDashboard) DOM.inputPinDashboard.value = '';
+  if (DOM.errorPinDashboard) DOM.errorPinDashboard.classList.add('hidden');
+}
+
+function cerrarSesionDashboard() {
+  sessionStorage.removeItem('dashboard_auth_status');
+  sessionStorage.removeItem('dashboard_auth_time');
+  appState.dashboardAutenticado = false;
   actualizarBotonesCerrarSesion();
   cambiarPestana('contratista');
 }
@@ -1375,6 +1558,10 @@ async function cambiarPestana(tab) {
     abrirModalAuthAnaKaren();
     return;
   }
+  if (tab === 'dashboard' && !estaAutenticadoDashboard()) {
+    abrirModalAuthDashboard();
+    return;
+  }
 
   appState.activeTab = tab;
 
@@ -1385,10 +1572,12 @@ async function cambiarPestana(tab) {
   if (DOM.vistaContratista) DOM.vistaContratista.classList.add('hidden');
   if (DOM.vistaResponsable) DOM.vistaResponsable.classList.add('hidden');
   if (DOM.vistaAnaKaren) DOM.vistaAnaKaren.classList.add('hidden');
+  if (DOM.vistaDashboard) DOM.vistaDashboard.classList.add('hidden');
 
   if (DOM.tabContratista) DOM.tabContratista.className = inactivoClass;
   if (DOM.tabResponsable) DOM.tabResponsable.className = inactivoClass;
   if (DOM.tabAnaKaren) DOM.tabAnaKaren.className = inactivoClass;
+  if (DOM.tabDashboard) DOM.tabDashboard.className = inactivoClass;
 
   actualizarBotonesCerrarSesion();
 
@@ -1416,6 +1605,15 @@ async function cambiarPestana(tab) {
       renderizarErroresAnaKaren();
     }
     await cargarErroresAnaKaren();
+  } else if (tab === 'dashboard') {
+    const activoIndigoClass = 'px-3 py-1.5 rounded-lg bg-white text-indigo-700 shadow-xs font-semibold flex items-center space-x-1.5 transition-all';
+    if (DOM.vistaDashboard) DOM.vistaDashboard.classList.remove('hidden');
+    if (DOM.tabDashboard) DOM.tabDashboard.className = activoIndigoClass;
+    actualizarEstilosFiltrosPeriodoDashboard();
+    renderizarDashboardOperativo();
+    if (!appState.dashboardExcelsAnalizados && !appState.dashboardCargandoExcels) {
+      analizarExcelsParaDashboard(false);
+    }
   }
 
   actualizarBotonesCerrarSesion();
@@ -2703,3 +2901,772 @@ window.marcarRevisadoAnaKaren = marcarRevisadoAnaKaren;
 window.desmarcarRevisadoAnaKaren = desmarcarRevisadoAnaKaren;
 window.cerrarSesionAnaKaren = cerrarSesionAnaKaren;
 window.cargarErroresAnaKaren = cargarErroresAnaKaren;
+
+
+// ============================================================================
+// MÓDULO: DASHBOARD OPERATIVO Y ANALÍTICA DE FOLIOS HIT
+// ============================================================================
+
+/**
+ * Cache global de todos los errores extraídos de archivos Excel para el dashboard
+ */
+let cacheTodosLosErroresExcel = {};
+
+/**
+ * Formatea una duración en minutos a una representación humana legible
+ */
+function formatearDuracion(minutos) {
+  if (minutos === null || minutos === undefined || isNaN(minutos) || minutos < 0) return '--';
+  if (minutos < 1) return '< 1 min';
+  if (minutos < 60) return `${Math.round(minutos)} min`;
+  const horas = Math.floor(minutos / 60);
+  const minsRest = Math.round(minutos % 60);
+  if (horas < 24) {
+    return minsRest > 0 ? `${horas}h ${minsRest}m` : `${horas} hrs`;
+  }
+  const dias = Math.floor(horas / 24);
+  const horasRest = horas % 24;
+  return horasRest > 0 ? `${dias}d ${horasRest}h` : `${dias} días`;
+}
+
+/**
+ * Filtra los tickets de la base de Integra según el período seleccionado
+ */
+function obtenerTicketsFiltradosDashboard() {
+  const todos = appState.todosLosTickets || [];
+  const periodo = appState.dashboardFiltroPeriodo || 'todos';
+  if (periodo === 'todos') return todos;
+
+  const ahoraSeg = Date.now() / 1000;
+  const hoyStr = getHoyDateString();
+
+  return todos.filter(t => {
+    if (!t.created_at) return false;
+    if (periodo === 'hoy') {
+      const recDate = new Date(t.created_at * 1000);
+      const recDateStr = `${recDate.getFullYear()}-${String(recDate.getMonth() + 1).padStart(2, '0')}-${String(recDate.getDate()).padStart(2, '0')}`;
+      return recDateStr === hoyStr;
+    }
+    if (periodo === 'semana') {
+      return (ahoraSeg - t.created_at) <= (7 * 86400);
+    }
+    if (periodo === 'mes') {
+      return (ahoraSeg - t.created_at) <= (30 * 86400);
+    }
+    return true;
+  });
+}
+
+/**
+ * Actualiza los estilos visuales de los botones de período del dashboard
+ */
+function actualizarEstilosFiltrosPeriodoDashboard() {
+  const activoClass = 'px-2.5 py-1 rounded-lg font-semibold bg-white text-indigo-700 shadow-xs transition-colors';
+  const inactivoClass = 'px-2.5 py-1 rounded-lg font-semibold text-slate-600 hover:text-slate-900 transition-colors';
+  const per = appState.dashboardFiltroPeriodo || 'todos';
+
+  if (DOM.btnFiltroDashboardTodos) DOM.btnFiltroDashboardTodos.className = per === 'todos' ? activoClass : inactivoClass;
+  if (DOM.btnFiltroDashboardHoy) DOM.btnFiltroDashboardHoy.className = per === 'hoy' ? activoClass : inactivoClass;
+  if (DOM.btnFiltroDashboardSemana) DOM.btnFiltroDashboardSemana.className = per === 'semana' ? activoClass : inactivoClass;
+  if (DOM.btnFiltroDashboardMes) DOM.btnFiltroDashboardMes.className = per === 'mes' ? activoClass : inactivoClass;
+}
+
+/**
+ * Categoriza cualquier texto de error encontrado en el Excel en familias operativas limpias
+ */
+function categorizarErrorDashboard(errorTexto) {
+  const txt = String(errorTexto || '').toLowerCase().trim();
+  if (!txt) return { categoria: 'Sin descripción de error', clave: 'sin_error' };
+
+  if (txt.includes('más de un registro') || txt.includes('mas de un registro')) {
+    return { categoria: 'Duplicidad en HIT (Múltiples registros)', clave: 'duplicidad_hit' };
+  }
+  if (txt.includes('liquidado') || txt.includes('pic movil') || txt.includes('pic móvil')) {
+    return { categoria: 'Falta liquidación en PIC Móvil', clave: 'pic_movil' };
+  }
+  if (txt.includes('pdf') || txt.includes('documento')) {
+    return { categoria: 'Falta documento PDF', clave: 'falta_pdf' };
+  }
+  if (txt.includes('cope') || txt.includes('catalogo') || txt.includes('catálogo')) {
+    return { categoria: 'Cope no encontrado en catálogo', clave: 'cope_catalogo' };
+  }
+  if (txt.includes('no se encontró registro') || txt.includes('no se encontro registro')) {
+    return { categoria: 'Sin registro en base HIT', clave: 'sin_registro_hit' };
+  }
+  if (txt.includes('tecnología') || txt.includes('tecnologia')) {
+    return { categoria: 'Tecnología diferente', clave: 'tecnologia_diferente' };
+  }
+  if (txt.includes('teléfono') || txt.includes('telefono') || txt.includes('no coincide')) {
+    return { categoria: 'Teléfono no coincide con folio', clave: 'telefono_no_coincide' };
+  }
+  if (txt.includes('estatus') || txt.includes('estado')) {
+    return { categoria: 'Estatus o estado inválido', clave: 'estatus_invalido' };
+  }
+  return { categoria: errorTexto.length > 55 ? errorTexto.slice(0, 52) + '...' : errorTexto, clave: 'otro' };
+}
+
+/**
+ * Renderiza todas las secciones del Dashboard Operativo
+ */
+function renderizarDashboardOperativo() {
+  if (!DOM.vistaDashboard) return;
+
+  const tickets = obtenerTicketsFiltradosDashboard();
+  const totalTickets = tickets.length;
+
+  const ticketsFinalizados = tickets.filter(t => String(t.answers[LINKAFORM_CONFIG.fieldIds.estatus] || '').toLowerCase() === 'finalizado');
+  const ticketsPendientes = totalTickets - ticketsFinalizados.length;
+
+  // 1. Tasa de Resolución
+  const tasaResolucion = totalTickets > 0 ? ((ticketsFinalizados.length / totalTickets) * 100).toFixed(1) : 0;
+  if (DOM.kpiDashboardTasaResolucion) {
+    DOM.kpiDashboardTasaResolucion.textContent = `${tasaResolucion}%`;
+  }
+  if (DOM.kpiDashboardConteoResolucion) {
+    DOM.kpiDashboardConteoResolucion.textContent = `${ticketsFinalizados.length} finalizados de ${totalTickets} totales`;
+  }
+
+  // 2. Total de Folios
+  let totalFolios = 0;
+  tickets.forEach(t => {
+    const f = parseInt(t.answers[LINKAFORM_CONFIG.fieldIds.numeroFolios], 10);
+    totalFolios += (!isNaN(f) && f > 0) ? f : 1;
+  });
+  if (DOM.kpiDashboardTotalFolios) {
+    DOM.kpiDashboardTotalFolios.textContent = totalFolios.toLocaleString('es-MX');
+  }
+  if (DOM.kpiDashboardPromedioFolios) {
+    const prom = totalTickets > 0 ? (totalFolios / totalTickets).toFixed(1) : 0;
+    DOM.kpiDashboardPromedioFolios.textContent = `Promedio: ${prom} folios/ticket`;
+  }
+
+  // 3. Total Tickets y Contratistas únicos
+  if (DOM.kpiDashboardTotalTickets) {
+    DOM.kpiDashboardTotalTickets.textContent = totalTickets;
+  }
+  const contratistasSet = new Set();
+  tickets.forEach(t => {
+    const nom = String(t.answers[LINKAFORM_CONFIG.fieldIds.nombre] || '').trim();
+    if (nom && nom !== 'None') contratistasSet.add(nom);
+  });
+  if (DOM.kpiDashboardContratistasUnicos) {
+    DOM.kpiDashboardContratistasUnicos.textContent = `De ${contratistasSet.size} contratistas distintos`;
+  }
+
+  // 4. Tiempos de Solución (solo finalizados con timestamps válidos)
+  const tiemposMinutos = [];
+  ticketsFinalizados.forEach(t => {
+    const c = t.created_at;
+    const u = t.updated_at;
+    if (c && u && u >= c) {
+      tiemposMinutos.push((u - c) / 60);
+    }
+  });
+
+  if (tiemposMinutos.length > 0) {
+    const sum = tiemposMinutos.reduce((acc, v) => acc + v, 0);
+    const promMin = sum / tiemposMinutos.length;
+    const minMin = Math.min(...tiemposMinutos);
+    const maxMin = Math.max(...tiemposMinutos);
+
+    if (DOM.kpiDashboardTiempoPromedio) {
+      DOM.kpiDashboardTiempoPromedio.textContent = formatearDuracion(promMin);
+    }
+    if (DOM.kpiDashboardTiempoExtremos) {
+      DOM.kpiDashboardTiempoExtremos.textContent = `Mín: ${formatearDuracion(minMin)} • Máx: ${formatearDuracion(maxMin)}`;
+    }
+  } else {
+    if (DOM.kpiDashboardTiempoPromedio) DOM.kpiDashboardTiempoPromedio.textContent = '--';
+    if (DOM.kpiDashboardTiempoExtremos) DOM.kpiDashboardTiempoExtremos.textContent = 'Sin tickets finalizados en este período';
+  }
+
+  // Renderizar secciones secundarias
+  renderizarDistribucionTiempos(tiemposMinutos, ticketsFinalizados.length);
+  renderizarProductividadResponsables(ticketsFinalizados);
+  renderizarTiposErrorDashboard();
+  renderizarTablaContratistasDashboard(tickets);
+
+  if (window.lucide) window.lucide.createIcons();
+}
+
+/**
+ * Renderiza la distribución de tiempos en rangos horizontales
+ */
+function renderizarDistribucionTiempos(tiemposMinutos, totalFinalizados) {
+  if (!DOM.contenedorDistribucionTiempos) return;
+
+  if (totalFinalizados === 0 || tiemposMinutos.length === 0) {
+    DOM.contenedorDistribucionTiempos.innerHTML = `
+      <div class="p-6 text-center text-slate-400 text-xs">
+        <i data-lucide="clock" class="w-8 h-8 text-slate-300 mx-auto mb-2"></i>
+        <p>No hay tiempos registrados en el período seleccionado.</p>
+      </div>
+    `;
+    return;
+  }
+
+  const buckets = [
+    { label: '< 30 minutos', desc: 'Atención inmediata', min: 0, max: 30, color: 'bg-emerald-500', count: 0 },
+    { label: '30 min a 2 hrs', desc: 'Tiempo óptimo', min: 30, max: 120, color: 'bg-teal-500', count: 0 },
+    { label: '2 a 6 horas', desc: 'Mismo turno laboral', min: 120, max: 360, color: 'bg-blue-500', count: 0 },
+    { label: '6 a 24 horas', desc: 'En el día / Turno siguiente', min: 360, max: 1440, color: 'bg-amber-500', count: 0 },
+    { label: '> 24 horas', desc: 'Casos complejos o fin de semana', min: 1440, max: Infinity, color: 'bg-rose-500', count: 0 }
+  ];
+
+  tiemposMinutos.forEach(m => {
+    for (const b of buckets) {
+      if (m >= b.min && m < b.max) {
+        b.count++;
+        break;
+      }
+    }
+  });
+
+  DOM.contenedorDistribucionTiempos.innerHTML = buckets.map(b => {
+    const pct = totalFinalizados > 0 ? Math.round((b.count / totalFinalizados) * 100) : 0;
+    return `
+      <div class="space-y-1">
+        <div class="flex items-center justify-between text-xs">
+          <span class="font-bold text-slate-700">${b.label} <span class="text-[10px] font-normal text-slate-400">(${b.desc})</span></span>
+          <span class="font-mono font-bold text-slate-800">${b.count} <span class="text-slate-400 font-normal">(${pct}%)</span></span>
+        </div>
+        <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+          <div class="${b.color} h-2 rounded-full transition-all duration-500" style="width: ${pct}%"></div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+/**
+ * Renderiza el desglose de productividad y tiempos por Responsable
+ */
+function renderizarProductividadResponsables(ticketsFinalizados) {
+  if (!DOM.contenedorResponsablesProductividad) return;
+
+  if (ticketsFinalizados.length === 0) {
+    DOM.contenedorResponsablesProductividad.innerHTML = `
+      <div class="p-6 text-center text-slate-400 text-xs">
+        <i data-lucide="user-x" class="w-8 h-8 text-slate-300 mx-auto mb-2"></i>
+        <p>Aún no hay tickets atendidos en este período.</p>
+      </div>
+    `;
+    return;
+  }
+
+  const mapa = {};
+  ticketsFinalizados.forEach(t => {
+    const resp = t.updated_by_name || t.updated_by_email || 'Sin responsable asignado';
+    if (!mapa[resp]) {
+      mapa[resp] = { nombre: resp, email: t.updated_by_email || '', tickets: 0, folios: 0, tiempos: [] };
+    }
+    mapa[resp].tickets++;
+    const f = parseInt(t.answers[LINKAFORM_CONFIG.fieldIds.numeroFolios], 10);
+    mapa[resp].folios += (!isNaN(f) && f > 0) ? f : 1;
+    if (t.created_at && t.updated_at && t.updated_at >= t.created_at) {
+      mapa[resp].tiempos.push((t.updated_at - t.created_at) / 60);
+    }
+  });
+
+  const lista = Object.values(mapa).sort((a, b) => b.tickets - a.tickets);
+
+  DOM.contenedorResponsablesProductividad.innerHTML = lista.map(item => {
+    const promMin = item.tiempos.length > 0 ? (item.tiempos.reduce((acc, v) => acc + v, 0) / item.tiempos.length) : null;
+    const pct = Math.round((item.tickets / ticketsFinalizados.length) * 100);
+
+    return `
+      <div class="p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 flex items-center justify-between gap-3">
+        <div class="flex items-center space-x-3 min-w-0">
+          <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-brand-700 to-brand-500 text-white font-bold flex items-center justify-center text-xs shrink-0 shadow-xs">
+            ${item.nombre.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase()}
+          </div>
+          <div class="min-w-0">
+            <h4 class="text-xs font-bold text-slate-900 truncate">${escapeHTML(item.nombre)}</h4>
+            <p class="text-[10px] text-slate-400 truncate">${escapeHTML(item.email || 'Operación PCI')}</p>
+          </div>
+        </div>
+
+        <div class="text-right shrink-0">
+          <div class="text-xs font-black text-brand-700 font-mono">${item.tickets} tickets <span class="text-[10px] text-slate-400 font-normal">(${pct}%)</span></div>
+          <div class="text-[10px] text-slate-500 mt-0.5">
+            ${item.folios} folios • Prom: <strong class="text-slate-700">${formatearDuracion(promMin)}</strong>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+/**
+ * Analiza y descarga los errores de todos los archivos Excel para el Dashboard
+ */
+async function analizarExcelsParaDashboard(forzar = false) {
+  if (appState.dashboardCargandoExcels) return;
+  appState.dashboardCargandoExcels = true;
+
+  if (DOM.btnReescanearExcelsDashboard) {
+    DOM.btnReescanearExcelsDashboard.disabled = true;
+    DOM.btnReescanearExcelsDashboard.innerHTML = '<span class="inline-block animate-spin w-3.5 h-3.5 border-2 border-slate-700 border-t-transparent rounded-full mr-1"></span><span>Escaneando...</span>';
+  }
+
+  const tickets = appState.todosLosTickets || [];
+  const archivos = [];
+  tickets.forEach(ticket => {
+    const answers = ticket.answers || {};
+    const excelFiles = answers[LINKAFORM_CONFIG.fieldIds.excel] || [];
+    const contratista = answers[LINKAFORM_CONFIG.fieldIds.nombre] || '';
+    if (Array.isArray(excelFiles)) {
+      excelFiles.forEach(file => {
+        if (file && file.file_url) {
+          archivos.push({ ticket, file, contratista });
+        }
+      });
+    }
+  });
+
+  if (forzar) {
+    cacheTodosLosErroresExcel = {};
+  }
+
+  const totalArchivos = archivos.length;
+  let procesados = 0;
+  const todosLosErrores = [];
+
+  if (DOM.progresoDashboardExcels) {
+    DOM.progresoDashboardExcels.classList.remove('hidden');
+    if (DOM.progresoDashboardBarra) DOM.progresoDashboardBarra.style.width = '0%';
+    if (DOM.progresoDashboardTexto) DOM.progresoDashboardTexto.textContent = `Extrayendo errores de ${totalArchivos} archivos Excel...`;
+  }
+
+  async function procesarUnArchivo(item) {
+    const { ticket, file, contratista } = item;
+    const fileUrl = file.file_url;
+    const fileName = file.file_name || 'Archivo.xlsx';
+
+    if (cacheTodosLosErroresExcel[fileUrl]) {
+      return cacheTodosLosErroresExcel[fileUrl];
+    }
+
+    try {
+      const res = await fetch(fileUrl);
+      if (!res.ok) return [];
+      const arrayBuf = await res.arrayBuffer();
+      const wb = XLSX.read(new Uint8Array(arrayBuf), { type: 'array' });
+      const firstSheetName = wb.SheetNames[0];
+      const sheet = wb.Sheets[firstSheetName];
+      const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+
+      if (!rawRows || rawRows.length < 2) {
+        cacheTodosLosErroresExcel[fileUrl] = [];
+        return [];
+      }
+
+      const headerRow = rawRows[0] || [];
+      let colFolio = -1;
+      let colError = -1;
+
+      headerRow.forEach((col, idx) => {
+        const colName = String(col || '').toLowerCase().trim();
+        if (colName.includes('folio') && colFolio === -1) colFolio = idx;
+        if (colName.includes('error') && colError === -1) colError = idx;
+      });
+
+      if (colFolio === -1) colFolio = 0;
+      if (colError === -1) colError = headerRow.length - 1;
+
+      const items = [];
+      for (let r = 1; r < rawRows.length; r++) {
+        const row = rawRows[r];
+        if (!row || !row.length) continue;
+
+        const valFolio = String(row[colFolio] !== undefined ? row[colFolio] : '').trim();
+        const valError = String(row[colError] !== undefined ? row[colError] : '').trim();
+
+        if (valFolio || valError) {
+          const cat = categorizarErrorDashboard(valError);
+          items.push({
+            folio: valFolio,
+            errorTexto: valError,
+            categoria: cat.categoria,
+            clave: cat.clave,
+            ticketId: ticket.id,
+            ticketFolio: ticket.folio || ticket.id,
+            ticketCreatedAt: ticket.created_at,
+            contratista: contratista,
+            archivoNombre: fileName
+          });
+        }
+      }
+
+      cacheTodosLosErroresExcel[fileUrl] = items;
+      return items;
+    } catch (e) {
+      console.warn('Fallo al leer Excel para dashboard:', fileName, e);
+      return [];
+    }
+  }
+
+  try {
+    const batchSize = 5;
+    for (let i = 0; i < archivos.length; i += batchSize) {
+      const lote = archivos.slice(i, i + batchSize);
+      const resultadosLote = await Promise.all(lote.map(procesarUnArchivo));
+      resultadosLote.forEach(res => todosLosErrores.push(...res));
+      procesados += lote.length;
+
+      if (DOM.progresoDashboardBarra && totalArchivos > 0) {
+        const pct = Math.round((procesados / totalArchivos) * 100);
+        DOM.progresoDashboardBarra.style.width = `${pct}%`;
+        if (DOM.progresoDashboardTexto) {
+          DOM.progresoDashboardTexto.textContent = `Procesando archivos: ${procesados} de ${totalArchivos} (${todosLosErrores.length} folios con error analizados)...`;
+        }
+      }
+    }
+
+    appState.dashboardErroresExtraidos = todosLosErrores;
+    appState.dashboardExcelsAnalizados = true;
+    renderizarTiposErrorDashboard();
+
+  } catch (err) {
+    console.error('Error general al analizar Excels del dashboard:', err);
+  } finally {
+    appState.dashboardCargandoExcels = false;
+    if (DOM.progresoDashboardExcels) {
+      setTimeout(() => DOM.progresoDashboardExcels.classList.add('hidden'), 500);
+    }
+    if (DOM.btnReescanearExcelsDashboard) {
+      DOM.btnReescanearExcelsDashboard.disabled = false;
+      DOM.btnReescanearExcelsDashboard.innerHTML = '<i data-lucide="scan-search" class="w-3.5 h-3.5 text-slate-500"></i><span>Escanear Todos los Excels</span>';
+      if (window.lucide) window.lucide.createIcons();
+    }
+  }
+}
+
+/**
+ * Renderiza la lista y barras de distribución de tipos de error
+ */
+function renderizarTiposErrorDashboard() {
+  if (!DOM.contenedorTiposErrorDashboard) return;
+
+  const errores = appState.dashboardErroresExtraidos || [];
+  if (errores.length === 0) {
+    DOM.contenedorTiposErrorDashboard.innerHTML = `
+      <div class="p-8 text-center text-slate-500 space-y-2">
+        <div class="w-12 h-12 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-2">
+          <i data-lucide="file-search" class="w-6 h-6"></i>
+        </div>
+        <p class="font-bold text-sm text-slate-700">Analizando archivos Excel de incidencias...</p>
+        <p class="text-xs text-slate-400 max-w-sm mx-auto">
+          Los archivos adjuntos de Integra se están procesando para clasificar las fallas detectadas en los folios.
+        </p>
+        <button type="button" onclick="analizarExcelsParaDashboard(true)" class="mt-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs shadow-xs transition-colors">
+          Iniciar Análisis de Excels
+        </button>
+      </div>
+    `;
+    if (window.lucide) window.lucide.createIcons();
+    return;
+  }
+
+  // Agrupar por categoría
+  const agrupados = {};
+  errores.forEach(item => {
+    const cat = item.categoria || 'Sin clasificar';
+    if (!agrupados[cat]) {
+      agrupados[cat] = { categoria: cat, count: 0, contratistas: new Set(), ejemplos: [] };
+    }
+    agrupados[cat].count++;
+    if (item.contratista) agrupados[cat].contratistas.add(item.contratista);
+    if (agrupados[cat].ejemplos.length < 2 && item.errorTexto) {
+      agrupados[cat].ejemplos.push(item.errorTexto);
+    }
+  });
+
+  const lista = Object.values(agrupados).sort((a, b) => b.count - a.count);
+  const totalFoliosConError = errores.length;
+
+  if (DOM.badgeTotalTiposError) {
+    DOM.badgeTotalTiposError.textContent = `${lista.length} tipos de error`;
+  }
+
+  const colores = ['bg-indigo-600', 'bg-purple-600', 'bg-blue-600', 'bg-amber-600', 'bg-rose-600', 'bg-teal-600', 'bg-slate-600'];
+
+  DOM.contenedorTiposErrorDashboard.innerHTML = `
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      ${lista.map((item, idx) => {
+        const pct = Math.round((item.count / totalFoliosConError) * 100);
+        const colColor = colores[idx % colores.length];
+
+        return `
+          <div class="p-4 rounded-xl border border-slate-200 bg-white hover:border-indigo-300 transition-colors shadow-2xs space-y-2">
+            <div class="flex items-start justify-between gap-2">
+              <div class="space-y-0.5">
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">#${idx + 1} de Frecuencia</span>
+                <h4 class="text-xs font-bold text-slate-900 leading-tight">${escapeHTML(item.categoria)}</h4>
+              </div>
+              <div class="text-right shrink-0">
+                <span class="text-sm font-black text-slate-900 font-mono">${item.count}</span>
+                <span class="text-[11px] font-semibold text-slate-500 block">(${pct}%)</span>
+              </div>
+            </div>
+
+            <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+              <div class="${colColor} h-2 rounded-full transition-all duration-500" style="width: ${pct}%"></div>
+            </div>
+
+            <div class="flex items-center justify-between text-[11px] text-slate-400 pt-1">
+              <span>Presente en ${item.contratistas.size} contratistas</span>
+              <span class="text-[10px] text-slate-500 font-medium">${item.count} folios afectados</span>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+/**
+ * Renderiza la tabla completa de contratistas con sus estadísticas y tiempos
+ */
+function renderizarTablaContratistasDashboard(tickets) {
+  if (!DOM.tablaContratistasDashboard) return;
+
+  const busqueda = (appState.dashboardBusquedaContratista || '').toLowerCase().trim();
+
+  // Agrupar por contratista
+  const mapa = {};
+  tickets.forEach(t => {
+    const rawNombre = t.answers[LINKAFORM_CONFIG.fieldIds.nombre];
+    const nombre = (rawNombre && rawNombre !== 'None' && String(rawNombre).trim() !== '') ? rawNombre.trim() : 'Sin nombre';
+    const tel = t.answers[LINKAFORM_CONFIG.fieldIds.telefono] || '';
+    const email = t.answers[LINKAFORM_CONFIG.fieldIds.email] || '';
+    const estatus = String(t.answers[LINKAFORM_CONFIG.fieldIds.estatus] || '').toLowerCase();
+    const esFinalizado = estatus === 'finalizado';
+    const numFolios = parseInt(t.answers[LINKAFORM_CONFIG.fieldIds.numeroFolios], 10) || 1;
+
+    const clave = nombre.toLowerCase();
+    if (!mapa[clave]) {
+      mapa[clave] = {
+        nombre: nombre,
+        telefono: tel,
+        email: email,
+        tickets: 0,
+        folios: 0,
+        finalizados: 0,
+        pendientes: 0,
+        tiempos: []
+      };
+    }
+
+    mapa[clave].tickets++;
+    mapa[clave].folios += numFolios;
+    if (esFinalizado) {
+      mapa[clave].finalizados++;
+      if (t.created_at && t.updated_at && t.updated_at >= t.created_at) {
+        mapa[clave].tiempos.push((t.updated_at - t.created_at) / 60);
+      }
+    } else {
+      mapa[clave].pendientes++;
+    }
+  });
+
+  let lista = Object.values(mapa).sort((a, b) => b.folios - a.folios);
+
+  if (DOM.badgeTotalContratistas) {
+    DOM.badgeTotalContratistas.textContent = `${lista.length} contratistas`;
+  }
+
+  // Filtrado por buscador
+  if (busqueda) {
+    lista = lista.filter(c => c.nombre.toLowerCase().includes(busqueda) || c.telefono.includes(busqueda) || c.email.toLowerCase().includes(busqueda));
+  }
+
+  if (lista.length === 0) {
+    DOM.tablaContratistasDashboard.innerHTML = `
+      <tr>
+        <td colspan="7" class="py-8 text-center text-slate-400 text-xs">
+          No se encontraron contratistas con el filtro actual.
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  DOM.tablaContratistasDashboard.innerHTML = lista.map((item, idx) => {
+    const tasa = item.tickets > 0 ? Math.round((item.finalizados / item.tickets) * 100) : 0;
+    const promMin = item.tiempos.length > 0 ? (item.tiempos.reduce((acc, v) => acc + v, 0) / item.tiempos.length) : null;
+
+    return `
+      <tr class="hover:bg-slate-50/80 transition-colors">
+        <td class="py-3 px-4 text-center font-mono font-bold text-slate-400">${idx + 1}</td>
+        <td class="py-3 px-4">
+          <div class="font-bold text-slate-900">${escapeHTML(item.nombre)}</div>
+          <div class="text-[11px] text-slate-400 font-mono">${escapeHTML(item.telefono || 'Sin teléfono')} • ${escapeHTML(item.email || 'Sin correo')}</div>
+        </td>
+        <td class="py-3 px-4 text-center font-mono font-bold text-slate-700">${item.tickets}</td>
+        <td class="py-3 px-4 text-center">
+          <span class="px-2 py-0.5 rounded-lg font-mono font-bold bg-blue-50 text-blue-700 border border-blue-200">
+            ${item.folios}
+          </span>
+        </td>
+        <td class="py-3 px-4 text-center">
+          <div class="flex items-center justify-center space-x-1">
+            <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-100 text-emerald-800 font-bold" title="Finalizados">${item.finalizados} fin</span>
+            ${item.pendientes > 0 ? `<span class="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-100 text-amber-800 font-bold" title="Pendientes">${item.pendientes} pend</span>` : ''}
+          </div>
+        </td>
+        <td class="py-3 px-4 text-center">
+          <span class="font-mono font-bold ${tasa === 100 ? 'text-emerald-600' : 'text-amber-600'}">${tasa}%</span>
+        </td>
+        <td class="py-3 px-4 text-right font-mono font-bold text-slate-700">
+          ${formatearDuracion(promMin)}
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+/**
+ * Exporta el reporte analítico completo del Dashboard a Excel (.xlsx)
+ */
+function exportarDashboardExcel() {
+  const tickets = obtenerTicketsFiltradosDashboard();
+  if (tickets.length === 0) {
+    alert('No hay datos en el período seleccionado para exportar.');
+    return;
+  }
+
+  const wb = XLSX.utils.book_new();
+
+  // 1. Hoja: Resumen Ejecutivo
+  const ticketsFinalizados = tickets.filter(t => String(t.answers[LINKAFORM_CONFIG.fieldIds.estatus] || '').toLowerCase() === 'finalizado');
+  let totalFolios = 0;
+  tickets.forEach(t => {
+    const f = parseInt(t.answers[LINKAFORM_CONFIG.fieldIds.numeroFolios], 10);
+    totalFolios += (!isNaN(f) && f > 0) ? f : 1;
+  });
+
+  const tiemposMin = [];
+  ticketsFinalizados.forEach(t => {
+    if (t.created_at && t.updated_at && t.updated_at >= t.created_at) {
+      tiemposMin.push((t.updated_at - t.created_at) / 60);
+    }
+  });
+
+  const promMin = tiemposMin.length > 0 ? (tiemposMin.reduce((a, b) => a + b, 0) / tiemposMin.length) : 0;
+  const minMin = tiemposMin.length > 0 ? Math.min(...tiemposMin) : 0;
+  const maxMin = tiemposMin.length > 0 ? Math.max(...tiemposMin) : 0;
+
+  const resumenFilas = [
+    { 'Métrica Operativa': 'Período Seleccionado', 'Valor': (appState.dashboardFiltroPeriodo || 'todos').toUpperCase() },
+    { 'Métrica Operativa': 'Tickets Totales', 'Valor': tickets.length },
+    { 'Métrica Operativa': 'Tickets Finalizados', 'Valor': ticketsFinalizados.length },
+    { 'Métrica Operativa': 'Tickets Pendientes', 'Valor': tickets.length - ticketsFinalizados.length },
+    { 'Métrica Operativa': 'Tasa de Resolución (%)', 'Valor': `${tickets.length > 0 ? ((ticketsFinalizados.length / tickets.length) * 100).toFixed(1) : 0}%` },
+    { 'Métrica Operativa': 'Folios Totales Procesados', 'Valor': totalFolios },
+    { 'Métrica Operativa': 'Promedio Folios / Ticket', 'Valor': (totalFolios / tickets.length).toFixed(1) },
+    { 'Métrica Operativa': 'Tiempo Promedio de Solución', 'Valor': formatearDuracion(promMin) },
+    { 'Métrica Operativa': 'Tiempo Mínimo de Solución', 'Valor': formatearDuracion(minMin) },
+    { 'Métrica Operativa': 'Tiempo Máximo de Solución', 'Valor': formatearDuracion(maxMin) }
+  ];
+  const wsResumen = XLSX.utils.json_to_sheet(resumenFilas);
+  XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen Ejecutivo');
+
+  // 2. Hoja: Ranking Contratistas
+  const contratistasMapa = {};
+  tickets.forEach(t => {
+    const rawNombre = t.answers[LINKAFORM_CONFIG.fieldIds.nombre];
+    const nom = (rawNombre && rawNombre !== 'None' && String(rawNombre).trim() !== '') ? rawNombre.trim() : 'Sin nombre';
+    const tel = t.answers[LINKAFORM_CONFIG.fieldIds.telefono] || '';
+    const email = t.answers[LINKAFORM_CONFIG.fieldIds.email] || '';
+    const esFin = String(t.answers[LINKAFORM_CONFIG.fieldIds.estatus] || '').toLowerCase() === 'finalizado';
+    const folios = parseInt(t.answers[LINKAFORM_CONFIG.fieldIds.numeroFolios], 10) || 1;
+
+    if (!contratistasMapa[nom]) {
+      contratistasMapa[nom] = { 'Contratista': nom, 'Teléfono': tel, 'Correo': email, 'Tickets': 0, 'Folios': 0, 'Finalizados': 0, 'Pendientes': 0, tiempos: [] };
+    }
+    contratistasMapa[nom].Tickets++;
+    contratistasMapa[nom].Folios += folios;
+    if (esFin) {
+      contratistasMapa[nom].Finalizados++;
+      if (t.created_at && t.updated_at && t.updated_at >= t.created_at) {
+        contratistasMapa[nom].tiempos.push((t.updated_at - t.created_at) / 60);
+      }
+    } else {
+      contratistasMapa[nom].Pendientes++;
+    }
+  });
+
+  const contratistasFilas = Object.values(contratistasMapa).map(c => {
+    const tProm = c.tiempos.length > 0 ? (c.tiempos.reduce((a, b) => a + b, 0) / c.tiempos.length) : null;
+    return {
+      'Contratista': c.Contratista,
+      'Teléfono': c.Teléfono,
+      'Correo': c.Correo,
+      'Tickets': c.Tickets,
+      'Folios': c.Folios,
+      'Finalizados': c.Finalizados,
+      'Pendientes': c.Pendientes,
+      'Tasa Solución (%)': `${c.Tickets > 0 ? Math.round((c.Finalizados / c.Tickets) * 100) : 0}%`,
+      'Tiempo Promedio Solución': formatearDuracion(tProm)
+    };
+  }).sort((a, b) => b.Folios - a.Folios);
+
+  const wsContratistas = XLSX.utils.json_to_sheet(contratistasFilas);
+  XLSX.utils.book_append_sheet(wb, wsContratistas, 'Contratistas');
+
+  // 3. Hoja: Tipos de Error (si se han analizado los Excels)
+  if (appState.dashboardErroresExtraidos && appState.dashboardErroresExtraidos.length > 0) {
+    const errMap = {};
+    appState.dashboardErroresExtraidos.forEach(item => {
+      const c = item.categoria || 'Sin clasificar';
+      errMap[c] = (errMap[c] || 0) + 1;
+    });
+    const errFilas = Object.entries(errMap).map(([cat, cnt]) => ({
+      'Categoría de Error': cat,
+      'Folios Afectados': cnt,
+      'Porcentaje (%)': `${((cnt / appState.dashboardErroresExtraidos.length) * 100).toFixed(1)}%`
+    })).sort((a, b) => b['Folios Afectados'] - a['Folios Afectados']);
+
+    const wsErrores = XLSX.utils.json_to_sheet(errFilas);
+    XLSX.utils.book_append_sheet(wb, wsErrores, 'Tipos de Error');
+  }
+
+  // 4. Hoja: Detalle de Tickets
+  const detalleFilas = tickets.map(t => {
+    const a = t.answers || {};
+    const c = t.created_at;
+    const u = t.updated_at;
+    const durMin = (c && u && u >= c) ? ((u - c) / 60) : null;
+
+    let fechaCreacionStr = '';
+    if (c) fechaCreacionStr = (new Date(c * 1000)).toLocaleString('es-MX');
+    let fechaAtencionStr = '';
+    if (u) fechaAtencionStr = (new Date(u * 1000)).toLocaleString('es-MX');
+
+    return {
+      'Folio Integra': t.folio || t.id,
+      'Fecha Creación': fechaCreacionStr,
+      'Fecha Atención': fechaAtencionStr,
+      'Tiempo Solución (minutos)': durMin !== null ? Math.round(durMin) : 'Pendiente',
+      'Tiempo Solución (legible)': formatearDuracion(durMin),
+      'Estatus': String(a[LINKAFORM_CONFIG.fieldIds.estatus] || 'en_progreso').toUpperCase(),
+      'Atendido Por': t.updated_by_name || t.updated_by_email || 'Sin registrar',
+      'Contratista': a[LINKAFORM_CONFIG.fieldIds.nombre] || 'Sin nombre',
+      'Teléfono': a[LINKAFORM_CONFIG.fieldIds.telefono] || '',
+      'Correo': a[LINKAFORM_CONFIG.fieldIds.email] || '',
+      'Folios': a[LINKAFORM_CONFIG.fieldIds.numeroFolios] || 1
+    };
+  });
+  const wsDetalle = XLSX.utils.json_to_sheet(detalleFilas);
+  XLSX.utils.book_append_sheet(wb, wsDetalle, 'Detalle Tickets');
+
+  const hoyStr = getHoyDateString();
+  XLSX.writeFile(wb, `Reporte_Dashboard_Operativo_HIT_${hoyStr}.xlsx`);
+}
+
+// Exponer funciones globales del dashboard
+window.renderizarDashboardOperativo = renderizarDashboardOperativo;
+window.analizarExcelsParaDashboard = analizarExcelsParaDashboard;
+window.exportarDashboardExcel = exportarDashboardExcel;
+window.cerrarSesionDashboard = cerrarSesionDashboard;
