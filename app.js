@@ -1469,6 +1469,14 @@ function actualizarBotonesCerrarSesion() {
       DOM.btnCerrarSesionAnaKaren.classList.add('hidden');
     }
   }
+
+  if (DOM.btnCerrarSesionDashboard) {
+    if (appState.activeTab === 'dashboard' && estaAutenticadoDashboard()) {
+      DOM.btnCerrarSesionDashboard.classList.remove('hidden');
+    } else {
+      DOM.btnCerrarSesionDashboard.classList.add('hidden');
+    }
+  }
 }
 
 /**
