@@ -2097,36 +2097,18 @@ function guardarRevisadosAnaKaren(revisados) {
 
 /**
  * Normaliza y clasifica los textos de error en categorías limpias y legibles
+/**
+ * Verifica si un texto de error corresponde exclusivamente al asignado a Ana Karen:
+ * "Verifica que tu folio sea el correcto y se encuentre liquidado completado en PIC Movil"
  */
-function clasificarTipoError(errorTexto) {
-  const str = String(errorTexto || '').trim();
-  const lower = str.toLowerCase();
+function esErrorExclusivoAnaKaren(errorTexto) {
+  if (!errorTexto) return false;
+  const str = String(errorTexto).toLowerCase().trim();
+  return (str.includes('pic movil') || str.includes('pic móvil')) && (str.includes('liquidado completado') || str.includes('liquidado'));
+}
 
-  if (lower.includes('existe pero el tel') && lower.includes('no coincide')) {
-    return '[HIT] Folio existe pero el teléfono no coincide';
-  }
-  if (lower.includes('no se encontr') && lower.includes('registro de hit')) {
-    return 'No se encontró registro de HIT';
-  }
-  if (lower.includes('no se encontro registro con este folio y telefono') || (lower.includes('no se encontr') && lower.includes('folio y telefono'))) {
-    return 'No se encontró registro con este folio y teléfono';
-  }
-  if (lower.includes('se encontr') && (lower.includes('mas de un registro') || lower.includes('ms de un registro') || lower.includes('duplicad'))) {
-    return '[HIT] Se encontró más de un registro (Duplicados)';
-  }
-  if (lower.includes('tecnolog') && lower.includes('diferente')) {
-    return 'El folio ya fue cargado en una Tecnología diferente';
-  }
-  if (lower.includes('no trae su documento pdf') || lower.includes('documento pdf')) {
-    return 'El folio no trae su documento PDF';
-  }
-  if (lower.includes('pic movil') || lower.includes('liquidado completado')) {
-    return 'Verifica folio correcto y liquidado en PIC Móvil';
-  }
-  if (lower.includes('error desconocido')) {
-    return 'Error desconocido (contactar a soporte)';
-  }
-  return str.length > 60 ? `${str.slice(0, 57)}...` : str;
+function clasificarTipoError(errorTexto) {
+  return 'Liquidación en PIC Móvil';
 }
 
 function escapeHTML(str) {
@@ -2140,38 +2122,13 @@ function escapeHTML(str) {
 }
 
 /**
- * Llena el selector desplegable con las categorías de errores detectadas en los archivos
+ * Llena el selector / indicador con el único tipo de error asignado a Ana Karen
  */
 function poblarTiposDeErrorAnaKaren(items) {
   if (!DOM.selectTipoErrorAnaKaren) return;
-
-  const conteoPorCategoria = {};
-  items.forEach(it => {
-    const cat = it.errorCategoria || 'Otros Errores';
-    conteoPorCategoria[cat] = (conteoPorCategoria[cat] || 0) + 1;
-  });
-
-  const categoriasOrdenadas = Object.keys(conteoPorCategoria).sort((a, b) => {
-    return conteoPorCategoria[b] - conteoPorCategoria[a];
-  });
-
-  const valorActual = appState.anaKarenFiltroTipo;
-  DOM.selectTipoErrorAnaKaren.innerHTML = '';
-
-  const optTodos = document.createElement('option');
-  optTodos.value = 'todos';
-  optTodos.textContent = `Todos los tipos de error (${items.length})`;
-  DOM.selectTipoErrorAnaKaren.appendChild(optTodos);
-
-  categoriasOrdenadas.forEach(cat => {
-    const opt = document.createElement('option');
-    opt.value = cat;
-    opt.textContent = `${cat} (${conteoPorCategoria[cat]})`;
-    if (valorActual === cat) {
-      opt.selected = true;
-    }
-    DOM.selectTipoErrorAnaKaren.appendChild(opt);
-  });
+  DOM.selectTipoErrorAnaKaren.innerHTML = `
+    <option value="todos">Verifica que tu folio sea el correcto y se encuentre liquidado completado en PIC Movil (${items.length})</option>
+  `;
 }
 
 /**
@@ -2285,6 +2242,12 @@ async function cargarErroresAnaKaren(forzar = false, silencioso = false) {
           const valFolio = String(row[colFolio] !== undefined ? row[colFolio] : '').trim();
           const valError = String(row[colError] !== undefined ? row[colError] : '').trim();
 
+          // REGLA ESTRICTA DE ANA KAREN:
+          // Único error que debe listarse en su módulo: "Verifica que tu folio sea el correcto y se encuentre liquidado completado en PIC Movil"
+          if (!esErrorExclusivoAnaKaren(valError)) {
+            continue;
+          }
+
           if (valFolio || valError) {
             const itemObj = {
               id: `${ticket.id || ticket.folio}_r${r}_${valFolio || 'row'}`,
@@ -2297,8 +2260,8 @@ async function cargarErroresAnaKaren(forzar = false, silencioso = false) {
               archivoNombre: fileName,
               archivoUrl: fileUrl,
               folioHit: valFolio || 'Sin Folio',
-              errorTexto: valError || 'Sin descripción de error',
-              errorCategoria: clasificarTipoError(valError),
+              errorTexto: valError || 'Verifica que tu folio sea el correcto y se encuentre liquidado completado en PIC Movil',
+              errorCategoria: 'Liquidación en PIC Móvil',
               filaExcel: r + 1
             };
             itemsExtraidos.push(itemObj);
@@ -2328,12 +2291,18 @@ async function cargarErroresAnaKaren(forzar = false, silencioso = false) {
         const pct = Math.round((procesados / totalArchivos) * 100);
         DOM.progresoBarraAnaKaren.style.width = `${pct}%`;
         if (DOM.progresoTextoAnaKaren) {
-          DOM.progresoTextoAnaKaren.textContent = `Procesando archivos: ${procesados} de ${totalArchivos} (${todosLosErrores.length} errores encontrados)...`;
+          DOM.progresoTextoAnaKaren.textContent = `Procesando archivos: ${procesados} de ${totalArchivos} (${todosLosErrores.length} folios con error en PIC Móvil encontrados)...`;
         }
       }
     }
 
     appState.anaKarenItems = todosLosErrores;
+
+    // Calcular cuántos archivos contienen esta incidencia específica
+    const archivosConEstaFalla = new Set(todosLosErrores.map(it => it.archivoUrl)).size;
+    if (DOM.metricAnaKarenArchivos) {
+      DOM.metricAnaKarenArchivos.textContent = archivosConEstaFalla;
+    }
 
     // 3. Poblar dropdown dinámico de tipos de error
     poblarTiposDeErrorAnaKaren(todosLosErrores);
@@ -2697,10 +2666,10 @@ function exportarExcelAnaKaren() {
 
   const ws = XLSX.utils.json_to_sheet(filas);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Errores Folios HIT');
+  XLSX.utils.book_append_sheet(wb, ws, 'Errores PIC Movil');
 
   const hoyStr = getHoyDateString();
-  XLSX.writeFile(wb, `Revision_Errores_HIT_Ana_Karen_${hoyStr}.xlsx`);
+  XLSX.writeFile(wb, `Revision_Errores_PIC_Movil_Ana_Karen_${hoyStr}.xlsx`);
 }
 
 // Exponer funciones globales para los eventos onclick en HTML

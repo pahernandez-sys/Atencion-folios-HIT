@@ -501,9 +501,9 @@
             </span>
             <span class="text-xs text-slate-400">• Base Linkaform 179149</span>
           </div>
-          <h2 class="text-lg font-bold text-slate-900 mt-1">Consolidación de Errores en Folios HIT</h2>
+          <h2 class="text-lg font-bold text-slate-900 mt-1">Revisión de Errores: Liquidación en PIC Móvil</h2>
           <p class="text-xs text-slate-500">
-            Revisión y atención de errores extraídos directamente de los archivos Excel adjuntos por contratistas.
+            Filtro exclusivo para Ana Karen: <strong class="text-purple-700">"Verifica que tu folio sea el correcto y se encuentre liquidado completado en PIC Movil"</strong>.
           </p>
           <div class="flex flex-wrap items-center gap-2 mt-2">
             <span class="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold bg-purple-50 text-purple-800 border border-purple-200">
@@ -539,7 +539,7 @@
             </svg>
           </div>
           <div class="flex-1 min-w-0">
-            <p id="progresoTextoAnaKaren" class="text-xs font-bold text-purple-900">Extrayendo errores de archivos Excel adjuntos...</p>
+            <p id="progresoTextoAnaKaren" class="text-xs font-bold text-purple-900">Extrayendo errores de PIC Móvil de los archivos Excel adjuntos...</p>
             <div class="w-full bg-purple-200/80 rounded-full h-1.5 mt-1.5 overflow-hidden">
               <div id="progresoBarraAnaKaren" class="bg-purple-600 h-1.5 rounded-full transition-all duration-300" style="width: 0%"></div>
             </div>
@@ -550,14 +550,14 @@
       <!-- Métricas del Módulo de Ana Karen -->
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-          <span class="text-xs text-slate-500 font-semibold block uppercase">Total Errores Extraídos</span>
+          <span class="text-xs text-slate-500 font-semibold block uppercase">Total Errores PIC Móvil</span>
           <span id="metricAnaKarenTotal" class="text-2xl font-black text-slate-800">0</span>
-          <span class="text-[10px] text-slate-400 block mt-0.5">Filas individuales en Excels</span>
+          <span class="text-[10px] text-slate-400 block mt-0.5">Filas con esta incidencia</span>
         </div>
         <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
           <span class="text-xs text-amber-700 font-semibold block uppercase">Pendientes de Revisión</span>
           <span id="metricAnaKarenPendientes" class="text-2xl font-black text-amber-600">0</span>
-          <span class="text-[10px] text-amber-600/80 block mt-0.5">Por atender / revisar</span>
+          <span class="text-[10px] text-amber-600/80 block mt-0.5">Por regularizar en PIC Móvil</span>
         </div>
         <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
           <span class="text-xs text-emerald-700 font-semibold block uppercase">Revisados / Atendidos</span>
@@ -565,9 +565,9 @@
           <span class="text-[10px] text-emerald-600/80 block mt-0.5">Marcados como atendidos</span>
         </div>
         <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-          <span class="text-xs text-purple-700 font-semibold block uppercase">Archivos Excel</span>
+          <span class="text-xs text-purple-700 font-semibold block uppercase">Archivos con este Error</span>
           <span id="metricAnaKarenArchivos" class="text-2xl font-black text-purple-700">0</span>
-          <span class="text-[10px] text-slate-400 block mt-0.5">Adjuntos procesados</span>
+          <span class="text-[10px] text-slate-400 block mt-0.5">Tickets que contienen la falla</span>
         </div>
       </div>
 
@@ -577,17 +577,18 @@
           
           <div class="flex items-center space-x-2">
             <i data-lucide="layers" class="w-4 h-4 text-purple-600"></i>
-            <h3 class="text-sm font-bold text-slate-900">Listado Consolidado de Errores</h3>
+            <h3 class="text-sm font-bold text-slate-900">Listado de Errores en PIC Móvil</h3>
             <span id="badgeAnaKarenMostrados" class="text-xs font-mono font-bold bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full">0</span>
           </div>
 
           <!-- Controles de Filtro -->
           <div class="flex flex-wrap items-center gap-2">
-            <!-- Selector de Tipo de Error (Dropdown dinámico) -->
-            <div class="w-full sm:w-auto min-w-[240px]">
-              <select id="selectTipoErrorAnaKaren" class="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-500 font-medium text-slate-700">
-                <option value="todos">Todos los tipos de error</option>
-              </select>
+            <!-- Indicador de Error Exclusivo -->
+            <div class="w-full sm:w-auto">
+              <span class="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-purple-100 text-purple-900 border border-purple-200 shadow-2xs">
+                <i data-lucide="alert-triangle" class="w-3.5 h-3.5 text-purple-600"></i>
+                <span>Liquidación en PIC Móvil</span>
+              </span>
             </div>
 
             <!-- Buscador en tiempo real -->
@@ -772,6 +773,6 @@
     <p>Operación PCI • Mesa de Control HIT • Conexión Linkaform API</p>
   </footer>
 
-  <script src="app.js?v=17"></script>
+  <script src="app.js?v=18"></script>
 </body>
 </html>
