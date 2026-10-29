@@ -316,7 +316,7 @@ function verificarHorarioAtencionContratistas() {
 }
 
 /**
- * Actualiza la UI del formulario de contratista según el horario de recepción
+ * Actualiza la UI del formulario de contratista según el horario de recepción (Informativo, sin bloquear)
  */
 function actualizarUIHorarioContratista() {
   const horario = verificarHorarioAtencionContratistas();
@@ -324,21 +324,22 @@ function actualizarUIHorarioContratista() {
   if (DOM.badgeHorarioAtencion) {
     if (horario.abierto) {
       DOM.badgeHorarioAtencion.innerHTML = `
-        <span class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+        <span class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs">
           <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span>Recepción Abierta (09:00 - 17:00 hrs)</span>
+          <span>Atención en Línea (09:00 - 17:00 hrs)</span>
         </span>
       `;
     } else {
       DOM.badgeHorarioAtencion.innerHTML = `
-        <span class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-800 border border-rose-200">
-          <span class="w-2 h-2 rounded-full bg-rose-500"></span>
-          <span>Recepción Cerrada (Lun-Vie 9:00 a 17:00)</span>
+        <span class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200 shadow-2xs">
+          <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+          <span>Atención: Lun-Vie 9:00 a 17:00 hrs</span>
         </span>
       `;
     }
   }
 
+  // Mostrar advertencia informativa cuando esté fuera de horario de atención de 9 a 5
   if (DOM.bannerFueraHorario) {
     if (horario.abierto) {
       DOM.bannerFueraHorario.classList.add('hidden');
@@ -347,48 +348,33 @@ function actualizarUIHorarioContratista() {
     }
   }
 
+  // El botón y el formulario siempre permanecen habilitados para registro 24/7
   if (DOM.btnSubmitContratista) {
-    if (horario.abierto) {
-      if (!appState.isSubmitting) {
-        DOM.btnSubmitContratista.disabled = false;
-      }
-      DOM.btnSubmitContratista.className = 'w-full sm:w-auto px-6 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-semibold text-sm shadow-sm transition-all flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed';
-      if (DOM.textoBtnSubmitContratista) {
-        DOM.textoBtnSubmitContratista.textContent = 'Subir Error y Obtener Turno';
-      }
-      if (DOM.iconSubmitContratista) {
-        DOM.iconSubmitContratista.setAttribute('data-lucide', 'send');
-      }
-      if (DOM.textoSubtextHorarioSubmit) {
-        DOM.textoSubtextHorarioSubmit.innerHTML = 'Se registrará en Linkaform con estatus <strong>En Progreso</strong>.';
-      }
-    } else {
-      DOM.btnSubmitContratista.disabled = true;
-      DOM.btnSubmitContratista.className = 'w-full sm:w-auto px-6 py-2.5 rounded-xl bg-slate-200 text-slate-500 font-semibold text-sm shadow-none cursor-not-allowed flex items-center justify-center space-x-2 border border-slate-300';
-      if (DOM.textoBtnSubmitContratista) {
-        DOM.textoBtnSubmitContratista.textContent = 'Recepción Cerrada (Lun-Vie 9 a 5)';
-      }
-      if (DOM.iconSubmitContratista) {
-        DOM.iconSubmitContratista.setAttribute('data-lucide', 'clock');
-      }
-      if (DOM.textoSubtextHorarioSubmit) {
-        DOM.textoSubtextHorarioSubmit.innerHTML = 'El registro de nuevos folios opera de <strong>Lunes a Viernes de 09:00 a 17:00 hrs</strong>.';
-      }
+    if (!appState.isSubmitting) {
+      DOM.btnSubmitContratista.disabled = false;
+    }
+    DOM.btnSubmitContratista.className = 'w-full sm:w-auto px-6 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-semibold text-sm shadow-sm transition-all flex items-center justify-center space-x-2 disabled:opacity-50';
+    if (DOM.textoBtnSubmitContratista) {
+      DOM.textoBtnSubmitContratista.textContent = 'Subir Error y Obtener Turno';
+    }
+    if (DOM.iconSubmitContratista) {
+      DOM.iconSubmitContratista.setAttribute('data-lucide', 'send');
+    }
+    if (DOM.textoSubtextHorarioSubmit) {
+      DOM.textoSubtextHorarioSubmit.innerHTML = horario.abierto
+        ? 'Se registrará en Linkaform con estatus <strong>En Progreso</strong>.'
+        : 'Registro disponible 24/7. Atención de Mesa de Control: <strong>Lun a Vie 9:00 a 17:00 hrs</strong>.';
     }
   }
 
-  // Deshabilitar campos del formulario si está cerrado
+  // Todos los campos se mantienen siempre habilitados
   const campos = [DOM.nombre, DOM.telefono, DOM.email, DOM.excelFile];
   campos.forEach(c => {
-    if (c) c.disabled = !horario.abierto;
+    if (c) c.disabled = false;
   });
 
   if (DOM.dropZone) {
-    if (horario.abierto) {
-      DOM.dropZone.classList.remove('opacity-50', 'pointer-events-none');
-    } else {
-      DOM.dropZone.classList.add('opacity-50', 'pointer-events-none');
-    }
+    DOM.dropZone.classList.remove('opacity-50', 'pointer-events-none');
   }
 
   if (window.lucide) window.lucide.createIcons();
@@ -1360,13 +1346,6 @@ async function handleFormSubmitContratista(e) {
   e.preventDefault();
 
   if (appState.isSubmitting) return;
-
-  const horario = verificarHorarioAtencionContratistas();
-  if (!horario.abierto) {
-    alert('⏰ Recepción de folios cerrada:\n\nEl horario para subir folios con error es de Lunes a Viernes de 09:00 a 17:00 hrs (Horario Centro).\n\nFuera de este horario puedes consultar el estatus y resolución de tus folios anteriores en el buscador superior.');
-    return;
-  }
-
   if (!validarFormularioContratista()) return;
 
   appState.isSubmitting = true;

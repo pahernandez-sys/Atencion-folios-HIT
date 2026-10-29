@@ -220,17 +220,17 @@
             <div id="badgeHorarioAtencion" class="shrink-0"></div>
           </div>
 
-          <!-- Banner de Fuera de Horario -->
+          <!-- Banner Informativo de Horario de Atención -->
           <div id="bannerFueraHorario" class="hidden p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 space-y-1.5">
             <div class="flex items-center space-x-2 font-bold text-xs text-amber-950">
-              <i data-lucide="clock" class="w-4 h-4 text-amber-700 shrink-0"></i>
-              <span>Recepción de Folios Cerrada</span>
+              <i data-lucide="info" class="w-4 h-4 text-amber-700 shrink-0"></i>
+              <span>Aviso de Horario de Atención de Mesa de Control</span>
             </div>
-            <p class="text-xs text-amber-800 leading-relaxed">
-              El horario de atención para subir nuevos folios es de <strong>Lunes a Viernes de 09:00 a 17:00 hrs</strong> (Horario Centro).
+            <p class="text-xs text-amber-900 leading-relaxed">
+              La Mesa de Control atiende y resuelve folios de <strong>Lunes a Viernes de 09:00 a 17:00 hrs</strong>.
             </p>
-            <p class="text-[11px] text-amber-700/80">
-              Fuera de este horario el formulario permanece bloqueado, pero puedes consultar el estatus y resolución de tus folios anteriores en el buscador superior.
+            <p class="text-[11px] text-amber-800 font-medium">
+              ✓ <strong>Puedes registrar tu folio en cualquier momento.</strong> Tu turno quedará asignado y será atendido en cuanto inicie el próximo horario hábil de atención.
             </p>
           </div>
 
@@ -339,9 +339,9 @@
         <!-- Botón de Envío -->
         <div class="p-6 bg-slate-50 flex flex-col sm:flex-row items-center justify-between gap-3">
           <span id="textoSubtextHorarioSubmit" class="text-xs text-slate-500">
-            Se registrará en Linkaform con estatus <strong>En Progreso</strong>.
+            Registro disponible 24/7 • Atención: <strong>Lun a Vie 09:00 a 17:00 hrs</strong>.
           </span>
-          <button type="submit" id="btnSubmitContratista" class="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-semibold text-sm shadow-sm transition-all flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed">
+          <button type="submit" id="btnSubmitContratista" class="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-semibold text-sm shadow-sm transition-all flex items-center justify-center space-x-2 disabled:opacity-50">
             <i data-lucide="send" id="iconSubmitContratista" class="w-4 h-4"></i>
             <span id="textoBtnSubmitContratista">Subir Error y Obtener Turno</span>
           </button>
@@ -578,6 +578,6 @@
     <p>Operación PCI • Mesa de Control HIT • Conexión Linkaform API</p>
   </footer>
 
-  <script src="app.js?v=15"></script>
+  <script src="app.js?v=16"></script>
 </body>
 </html>
