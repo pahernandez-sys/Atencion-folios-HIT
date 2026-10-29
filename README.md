@@ -1,12 +1,13 @@
-# Portal de Tickets y Sistema de Turnos - Errores HIT (Operación PCI)
+# Mesa de Validacion HIT (Operación PCI)
 
-Sistema web integral y responsivo diseñado para gestionar el flujo de atención de errores en folios HIT mediante **dos entidades**:
+Sistema web integral y responsivo diseñado para gestionar el flujo de validación y atención de errores en folios HIT mediante:
 1. **Contratistas de Campo:** Suben su reporte con únicamente 4 datos y reciben un turno diario.
-2. **Responsable (Mesa de Control HIT):** Atiende los errores en orden cronológico, valida los folios y marca el ticket como finalizado para que **Linkaform** envíe automáticamente la confirmación por correo al contratista.
+2. **Responsable (Mesa de Validación HIT):** Atiende los errores en orden cronológico, valida los folios y marca el ticket como finalizado para que **Integra** envíe automáticamente la confirmación por correo al contratista.
+3. **Módulo Revisión TAC:** Consolidado de errores específicos ("Verifica que tu folio sea el correcto y se encuentre liquidado completado en PIC Movil") extraídos automáticamente de los archivos Excel adjuntos con acceso por PIN.
 
 ---
 
-## 👥 Arquitectura de Dos Entidades
+## 👥 Arquitectura de la Plataforma
 
 ### 1. Entidad: Contratistas
 * **Formulario Minimalista:** Únicamente ingresa:
@@ -16,7 +17,7 @@ Sistema web integral y responsivo diseñado para gestionar el flujo de atención
   4. Archivo Excel con Errores (`.xlsx`, `.xls`)
 * **Conteo Automático de Folios:** Cada Excel lleva una fila de encabezado y un folio por fila. El navegador lee el archivo en tiempo real mediante `SheetJS` y contabiliza automáticamente los folios.
 * **Sistema de Turnos Diarios:**
-  - Al enviar el reporte, se genera el ticket en Linkaform en estatus `en_progreso`.
+  - Al enviar el reporte, se genera el ticket en Integra en estatus `en_progreso`.
   - Se le asigna un número de **Turno del Día** (ej. Turno #04).
   - En la parte superior de la web, ve un **Tablero de Turnos en Vivo**:
     * **Atendiendo Turno:** En qué turno va la responsable.
@@ -24,22 +25,27 @@ Sistema web integral y responsivo diseñado para gestionar el flujo de atención
     * **Tu Turno:** Notifica si está en espera o ya fue finalizado.
   - **Restablecimiento Diario:** El conteo de turnos se reinicia automáticamente cada día a las 00:00 hrs.
 
-### 2. Entidad: Responsable de Atender Errores (Mesa de Control)
+### 2. Entidad: Responsable de Atender Errores (Mesa de Control / Validación)
 * **Pestaña Dedicada:** "Mesa de Control".
 * **Cola de Tickets del Día:** Visualiza la lista de tickets ordenados por Turno correlativo.
 * **Control de Turnos:** Botón *"Atender Siguiente"* para avanzar el turno actual que ven los contratistas en el tablero.
 * **Validación de Folios:** El número de folios viene precalculado del Excel, con opción a ajuste manual si lo requiere.
 * **Resolución y Cierre:**
-  - Descarga el archivo Excel directamente desde Linkaform Storage.
+  - Descarga el archivo Excel directamente desde Integra Storage.
   - Puede añadir comentarios u observaciones de la solución.
   - Al dar clic en *"Finalizar y Notificar por Correo"*:
-    * Se actualiza Linkaform mediante `PATCH` cambiando el estatus a `finalizado`.
-    * **Linkaform se encarga de enviar automáticamente el correo electrónico al contratista.**
+    * Se actualiza Integra mediante `PATCH` cambiando el estatus a `finalizado`.
+    * **Integra se encarga de enviar automáticamente el correo electrónico al contratista.**
     * El tablero de turnos avanza al siguiente ticket.
+
+### 3. Entidad: Revisión TAC
+* **Pestaña Dedicada:** "Revisión TAC" con acceso seguro por PIN `2468`.
+* **Filtro Exclusivo:** Extrae y lista únicamente la falla de liquidación en PIC Móvil.
+* Permite marcar folios atendidos y exportar el consolidado a Excel.
 
 ---
 
-## 🛠️ Conexión con Linkaform API
+## 🛠️ Conexión con Integra API
 
 * **Forma ID:** `179149` ("Tickets Folios HIT")
 * **Subida de Archivos:** `POST https://app.linkaform.com/api/infosync/cloud_upload/`

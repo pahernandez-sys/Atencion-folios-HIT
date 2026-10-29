@@ -1,7 +1,7 @@
 /**
- * Portal de Tickets y Turnos - Folios Errores HIT
- * Gestión Dual: Contratistas & Responsable de Mesa de Control PCI
- * Conexión completa con Linkaform API
+ * Mesa de Validacion HIT
+ * Gestión Dual: Contratistas & Responsable de Mesa de Validación PCI
+ * Conexión completa con Integra API
  */
 
 const LINKAFORM_CONFIG = {
@@ -218,7 +218,7 @@ const DOM = {
   btnCerrarConsulta: document.getElementById('btnCerrarConsulta'),
   listaResultadosConsulta: document.getElementById('listaResultadosConsulta'),
 
-  // Vista Responsable (Mesa de Control & Histórico Linkaform)
+  // Vista Responsable (Mesa de Control & Histórico Integra)
   responsableTurnoActualText: document.getElementById('responsableTurnoActualText'),
   btnAvanzarTurno: document.getElementById('btnAvanzarTurno'),
   btnRecargarLista: document.getElementById('btnRecargarLista'),
@@ -303,7 +303,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   recuperarMiTurnoLocal();
   actualizarUIHorarioContratista();
 
-  // Iniciar sesión y sincronizar tickets desde Linkaform
+  // Iniciar sesión y sincronizar tickets desde Integra
   await sincronizarTicketsYTurnos();
 
   // Actualización automática periódica cada 20 segundos
@@ -421,7 +421,7 @@ function actualizarUIHorarioContratista() {
     }
     if (DOM.textoSubtextHorarioSubmit) {
       DOM.textoSubtextHorarioSubmit.innerHTML = horario.abierto
-        ? 'Se registrará en Linkaform con estatus <strong>En Progreso</strong>.'
+        ? 'Se registrará en Integra con estatus <strong>En Progreso</strong>.'
         : 'Registro disponible 24/7. Atención de Mesa de Control: <strong>Lun a Vie 9:00 a 17:00 hrs</strong>.';
     }
   }
@@ -440,7 +440,7 @@ function actualizarUIHorarioContratista() {
 }
 
 /**
- * Autenticación silenciosa en Linkaform con credenciales de administración
+ * Autenticación silenciosa en Integra con credenciales de administración
  */
 async function autenticarLinkaform(force = false) {
   try {
@@ -465,7 +465,7 @@ async function autenticarLinkaform(force = false) {
     });
 
     if (!response.ok) {
-      console.warn('Fallo al obtener JWT de Linkaform para', authUser.email, response.status);
+      console.warn('Fallo al obtener JWT de Integra para', authUser.email, response.status);
       sessionStorage.removeItem(sessionKey);
       appState.jwtToken = null;
       return null;
@@ -488,7 +488,7 @@ async function autenticarLinkaform(force = false) {
 }
 
 /**
- * Sincroniza la lista de tickets desde Linkaform y calcula los turnos de manera determinista
+ * Sincroniza la lista de tickets desde Integra y calcula los turnos de manera determinista
  */
 async function sincronizarTicketsYTurnos(silencioso = false) {
   if (!appState.jwtToken) {
@@ -511,7 +511,7 @@ async function sincronizarTicketsYTurnos(silencioso = false) {
 
     if (!response.ok) {
       if (response.status === 440 || response.status === 401) {
-        console.warn('Sesión Linkaform expirada (440/401). Renovando token...');
+        console.warn('Sesión Integra expirada (440/401). Renovando token...');
         sessionStorage.removeItem('lkf_jwt');
         appState.jwtToken = null;
         await autenticarLinkaform(true);
@@ -525,7 +525,7 @@ async function sincronizarTicketsYTurnos(silencioso = false) {
         DOM.ticketsContainer.innerHTML = `
           <div class="p-8 text-center text-rose-800 bg-rose-50 rounded-xl m-4 border border-rose-200">
             <i data-lucide="alert-octagon" class="w-8 h-8 mx-auto mb-2 text-rose-600"></i>
-            <p class="font-bold text-sm">Respuesta inesperada de Linkaform (${response.status})</p>
+            <p class="font-bold text-sm">Respuesta inesperada de Integra (${response.status})</p>
             <p class="text-xs text-rose-600 mt-1">No se pudieron recuperar los tickets en este momento.</p>
             <button type="button" onclick="sincronizarTicketsYTurnos()" class="mt-3 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-xs shadow-xs">
               Reintentar Conexión
@@ -598,7 +598,7 @@ async function sincronizarTicketsYTurnos(silencioso = false) {
       DOM.ticketsContainer.innerHTML = `
         <div class="p-8 text-center text-rose-800 bg-rose-50 rounded-xl m-4 border border-rose-200">
           <i data-lucide="alert-circle" class="w-8 h-8 mx-auto mb-2 text-rose-600"></i>
-          <p class="font-bold text-sm">Error de conexión con Linkaform</p>
+          <p class="font-bold text-sm">Error de conexión con Integra</p>
           <p class="text-xs text-rose-600 mt-1">${err.message || 'No se pudo conectar con el servidor'}</p>
           <button type="button" onclick="sincronizarTicketsYTurnos()" class="mt-3 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-xs shadow-xs">
             Reintentar Conexión
@@ -740,7 +740,7 @@ async function consultarTicketsPorTelefono(telefono) {
   }
 
   try {
-    // Si la lista de tickets está vacía o no se ha sincronizado, consultar Linkaform
+    // Si la lista de tickets está vacía o no se ha sincronizado, consultar Integra
     if (!appState.todosLosTickets || appState.todosLosTickets.length === 0) {
       await sincronizarTicketsYTurnos(true);
     }
@@ -870,7 +870,7 @@ function renderizarResultadosConsulta(telLimpio, silencioso = false) {
           <p class="text-xs text-amber-900/90 leading-relaxed pl-5">
             ${posicionTurnoMensaje}
           </p>
-          ${email ? `<p class="text-[11px] text-amber-800/80 pl-5">Al finalizar, Linkaform te notificará por correo a <strong>${enmascararEmail(email)}</strong>.</p>` : ''}
+          ${email ? `<p class="text-[11px] text-amber-800/80 pl-5">Al finalizar, Integra te notificará por correo a <strong>${enmascararEmail(email)}</strong>.</p>` : ''}
         </div>
       `;
     }
@@ -1098,7 +1098,7 @@ function setupEventListeners() {
         sessionStorage.setItem('mesa_usuario_id', responsable.id);
         appState.usuarioActivo = responsable;
         cerrarModalAuthMesa();
-        // Iniciar sesión en Linkaform con la cuenta de este responsable
+        // Iniciar sesión en Integra con la cuenta de este responsable
         await autenticarLinkaform(true);
         cambiarPestana('responsable');
       } else {
@@ -1289,12 +1289,12 @@ function actualizarBotonesCerrarSesion() {
 }
 
 /**
- * Exporta el histórico completo de Linkaform a un archivo Excel (.xlsx) con SheetJS
+ * Exporta el histórico completo de Integra a un archivo Excel (.xlsx) con SheetJS
  */
 function exportarHistoricoExcel() {
   const tickets = appState.todosLosTickets;
   if (!tickets || tickets.length === 0) {
-    alert('No hay tickets en la base de datos de Linkaform para exportar.');
+    alert('No hay tickets en la base de datos de Integra para exportar.');
     return;
   }
 
@@ -1317,7 +1317,7 @@ function exportarHistoricoExcel() {
     }
 
     return {
-      'Folio Linkaform': t.folio || t.id,
+      'Folio Integra': t.folio || t.id,
       'Fecha Creación': fechaStr,
       'Estatus': estatus,
       'Atendido Por': t.updated_by_name || t.updated_by_email || (estatus === 'Finalizado' ? 'Sin registrar' : 'Pendiente'),
@@ -1332,10 +1332,10 @@ function exportarHistoricoExcel() {
 
   const ws = XLSX.utils.json_to_sheet(filas);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Histórico Linkaform');
+  XLSX.utils.book_append_sheet(wb, ws, 'Histórico Integra');
   
   const hoyStr = getHoyDateString();
-  XLSX.writeFile(wb, `Historico_Folios_HIT_Linkaform_${hoyStr}.xlsx`);
+  XLSX.writeFile(wb, `Historico_Mesa_Validacion_HIT_Integra_${hoyStr}.xlsx`);
 }
 
 function actualizarEstilosFiltros() {
@@ -1556,7 +1556,7 @@ function validarFormularioContratista() {
 }
 
 /**
- * Envío del ticket del contratista a Linkaform
+ * Envío del ticket del contratista a Integra
  */
 async function handleFormSubmitContratista(e) {
   e.preventDefault();
@@ -1567,10 +1567,10 @@ async function handleFormSubmitContratista(e) {
   appState.isSubmitting = true;
   DOM.btnSubmitContratista.disabled = true;
 
-  mostrarLoading('Cargando Archivo...', 'Subiendo archivo Excel a Linkaform...');
+  mostrarLoading('Cargando Archivo...', 'Subiendo archivo Excel a Integra...');
 
   try {
-    // 1. Cargar archivo multipart a Linkaform
+    // 1. Cargar archivo multipart a Integra
     const formData = new FormData();
     formData.append('File', appState.selectedFile);
     formData.append('field_id', LINKAFORM_CONFIG.fieldIds.excel);
@@ -1587,10 +1587,10 @@ async function handleFormSubmitContratista(e) {
 
     const uploadData = await uploadRes.json();
     if (!uploadData || !uploadData.file) {
-      throw new Error('No se recibió la URL del archivo desde Linkaform.');
+      throw new Error('No se recibió la URL del archivo desde Integra.');
     }
 
-    // 2. Crear Registro en Linkaform
+    // 2. Crear Registro en Integra
     actualizarLoading('Generando Ticket...', 'Registrando incidencia y asignando turno...');
 
     const payload = {
@@ -1625,7 +1625,7 @@ async function handleFormSubmitContratista(e) {
 
     if (!submitRes.ok) {
       const errTxt = await submitRes.text();
-      throw new Error(`Error al registrar en Linkaform (${submitRes.status}): ${errTxt}`);
+      throw new Error(`Error al registrar en Integra (${submitRes.status}): ${errTxt}`);
     }
 
     const createdRecord = await submitRes.json();
@@ -1700,7 +1700,7 @@ function renderizarVistaResponsable() {
         </div>
         <h3 class="font-bold text-base text-amber-900">Restricción de Seguridad del Navegador (Modo file://)</h3>
         <p class="text-xs text-amber-800 max-w-lg mx-auto leading-relaxed">
-          Has abierto el sistema directamente como un archivo local (<code>file:///...</code>). Los navegadores (Chrome, Edge) bloquean la consulta de tickets desde la API de Linkaform cuando no se ejecuta sobre un servidor web.
+          Has abierto el sistema directamente como un archivo local (<code>file:///...</code>). Los navegadores (Chrome, Edge) bloquean la consulta de tickets desde la API de Integra cuando no se ejecuta sobre un servidor web.
         </p>
         <div class="pt-2">
           <a href="http://localhost:8000" class="inline-flex items-center space-x-2 px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl text-xs transition-colors shadow-sm">
@@ -1720,7 +1720,7 @@ function renderizarVistaResponsable() {
   const ticketsHoy = appState.ticketsHoy;
   const todosTickets = appState.todosLosTickets;
   
-  // Métricas Globales de Linkaform
+  // Métricas Globales de Integra
   const totalHistorico = todosTickets.length;
   const pendientesTotal = todosTickets.filter(t => String(t.answers[LINKAFORM_CONFIG.fieldIds.estatus] || '').toLowerCase() !== 'finalizado');
   const finalizadosTotal = todosTickets.filter(t => String(t.answers[LINKAFORM_CONFIG.fieldIds.estatus] || '').toLowerCase() === 'finalizado');
@@ -1848,7 +1848,7 @@ function renderizarVistaResponsable() {
               ${turnoLabel}
             </span>
 
-            <!-- Folio Linkaform -->
+            <!-- Folio Integra -->
             <span class="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
               Folio: <strong>${ticket.folio || ticket.id}</strong>
             </span>
@@ -1921,7 +1921,7 @@ function renderizarVistaResponsable() {
           ` : `
             <div class="text-center py-1.5 bg-emerald-50 text-emerald-700 rounded-lg text-xs font-semibold border border-emerald-200 flex items-center justify-center space-x-1">
               <i data-lucide="mail-check" class="w-3.5 h-3.5"></i>
-              <span>Correo enviado por Linkaform</span>
+              <span>Correo enviado por Integra</span>
             </div>
           `}
         </div>
@@ -1956,11 +1956,11 @@ window.finalizarTicketDesdeWeb = async function(recordId) {
   }
 
   const responsable = appState.usuarioActivo;
-  if (!confirm(`¿Deseas marcar este ticket como FINALIZADO?\n\nResponsable que atiende: ${responsable.nombre} (${responsable.email})\nLinkaform registrará que tú atendiste esta incidencia y enviará la notificación por correo al contratista.`)) {
+  if (!confirm(`¿Deseas marcar este ticket como FINALIZADO?\n\nResponsable que atiende: ${responsable.nombre} (${responsable.email})\nIntegra registrará que tú atendiste esta incidencia y enviará la notificación por correo al contratista.`)) {
     return;
   }
 
-  mostrarLoading('Finalizando Ticket...', `Actualizando estatus en Linkaform como ${responsable.nombre} y enviando correo...`);
+  mostrarLoading('Finalizando Ticket...', `Actualizando estatus en Integra como ${responsable.nombre} y enviando correo...`);
 
   try {
     if (!appState.jwtToken) {
@@ -1973,7 +1973,7 @@ window.finalizarTicketDesdeWeb = async function(recordId) {
       headers: { 'Authorization': `Bearer ${appState.jwtToken}` }
     });
 
-    if (!getRes.ok) throw new Error('No se pudo recuperar el registro de Linkaform');
+    if (!getRes.ok) throw new Error('No se pudo recuperar el registro de Integra');
     const recData = await getRes.json();
 
     // 2. Extraer valores del formulario en pantalla o borrador
@@ -2003,7 +2003,7 @@ window.finalizarTicketDesdeWeb = async function(recordId) {
       answers: answersActuales
     };
 
-    // 4. Enviar PATCH a Linkaform
+    // 4. Enviar PATCH a Integra
     const patchRes = await fetch(`${LINKAFORM_CONFIG.endpoints.formAnswer}${recordId}/`, {
       method: 'PATCH',
       headers: {
@@ -2015,7 +2015,7 @@ window.finalizarTicketDesdeWeb = async function(recordId) {
 
     if (!patchRes.ok) {
       const errTxt = await patchRes.text();
-      throw new Error(`Error en Linkaform (${patchRes.status}): ${errTxt}`);
+      throw new Error(`Error en Integra (${patchRes.status}): ${errTxt}`);
     }
 
     // Limpiar el borrador guardado para este ticket ya que ha sido finalizado con éxito
@@ -2026,7 +2026,7 @@ window.finalizarTicketDesdeWeb = async function(recordId) {
     ocultarLoading();
 
     const contratistaEmail = answersActuales[LINKAFORM_CONFIG.fieldIds.email] || '';
-    alert(`¡Ticket Finalizado con éxito!\n\nRegistrado en Linkaform por: ${responsable.nombre} (${responsable.email})\nComentarios de resolución: "${comentariosFinal}"\nSe disparó el correo automático a: ${contratistaEmail}`);
+    alert(`¡Ticket Finalizado con éxito!\n\nRegistrado en Integra por: ${responsable.nombre} (${responsable.email})\nComentarios de resolución: "${comentariosFinal}"\nSe disparó el correo automático a: ${contratistaEmail}`);
 
   } catch (err) {
     console.error('Error al finalizar ticket:', err);
@@ -2132,7 +2132,7 @@ function poblarTiposDeErrorAnaKaren(items) {
 }
 
 /**
- * Descarga y extrae los errores de todos los archivos Excel adjuntos en Linkaform
+ * Descarga y extrae los errores de todos los archivos Excel adjuntos en Integra
  */
 async function cargarErroresAnaKaren(forzar = false, silencioso = false) {
   if (appState.anaKarenCargando) return;
@@ -2144,7 +2144,7 @@ async function cargarErroresAnaKaren(forzar = false, silencioso = false) {
   }
 
   try {
-    // 1. Asegurar que los tickets de Linkaform estén cargados
+    // 1. Asegurar que los tickets de Integra estén cargados
     if (!appState.todosLosTickets || appState.todosLosTickets.length === 0) {
       await sincronizarTicketsYTurnos(true);
     }
@@ -2488,7 +2488,7 @@ function renderizarErroresAnaKaren() {
             Folio: ${escapeHTML(item.folioHit)}
           </span>
           <span class="px-2.5 py-0.5 rounded-full text-xs font-bold ${esRevisado ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-amber-100 text-amber-800 border border-amber-200'}">
-            ${esRevisado ? '✓ Atendido por Ana Karen' : '⚡ Pendiente de Revisión'}
+            ${esRevisado ? '✓ Atendido (TAC)' : '⚡ Pendiente de Revisión'}
           </span>
           <span class="text-[11px] font-semibold text-purple-700 bg-purple-50 border border-purple-200 px-2.5 py-0.5 rounded-md">
             ${escapeHTML(item.errorCategoria)}
@@ -2501,7 +2501,7 @@ function renderizarErroresAnaKaren() {
           <p class="break-words font-medium leading-relaxed">${escapeHTML(item.errorTexto)}</p>
         </div>
 
-        <!-- Metadata de Contratista, Ticket Linkaform y Archivo -->
+        <!-- Metadata de Contratista, Ticket Integra y Archivo -->
         <div class="flex flex-wrap items-center text-xs text-slate-500 gap-x-4 gap-y-1 pt-0.5">
           <span>👤 Contratista: <strong class="text-slate-700">${escapeHTML(item.contratistaNombre || 'Sin nombre')}</strong> (${escapeHTML(item.contratistaTelefono)})</span>
           <span>🎫 Ticket: <strong class="font-mono text-slate-700">${escapeHTML(item.ticketFolio)}</strong></span>
@@ -2677,13 +2677,13 @@ function exportarExcelAnaKaren() {
       'Folio HIT': item.folioHit,
       'Error Reportado': item.errorTexto,
       'Categoría Error': item.errorCategoria,
-      'Estatus Revisión': esRev ? 'Atendido por Ana Karen' : 'Pendiente',
+      'Estatus Revisión': esRev ? 'Atendido en Revisión TAC' : 'Pendiente',
       'Fecha Atención': fechaRevStr || 'Pendiente',
       'Contratista': item.contratistaNombre || 'Sin especificar',
       'Teléfono': item.contratistaTelefono,
       'Correo': item.contratistaEmail,
-      'Folio Ticket Linkaform': item.ticketFolio,
-      'Fecha Ticket Linkaform': fechaTicketStr,
+      'Folio Ticket Integra': item.ticketFolio,
+      'Fecha Ticket Integra': fechaTicketStr,
       'Archivo Excel': item.archivoNombre,
       'Fila en Excel': item.filaExcel,
       'Enlace Descarga Archivo': item.archivoUrl
@@ -2692,10 +2692,10 @@ function exportarExcelAnaKaren() {
 
   const ws = XLSX.utils.json_to_sheet(filas);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Errores PIC Movil');
+  XLSX.utils.book_append_sheet(wb, ws, 'Revisión TAC');
 
   const hoyStr = getHoyDateString();
-  XLSX.writeFile(wb, `Revision_Errores_PIC_Movil_Ana_Karen_${hoyStr}.xlsx`);
+  XLSX.writeFile(wb, `Revision_TAC_PIC_Movil_${hoyStr}.xlsx`);
 }
 
 // Exponer funciones globales para los eventos onclick en HTML

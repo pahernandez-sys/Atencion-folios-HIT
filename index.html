@@ -6,8 +6,8 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <title>Portal de Tickets y Turnos - Folios Errores HIT | PCI</title>
-  <meta name="description" content="Sistema de gestión de tickets y turnos para atención de errores en folios HIT para Contratistas y Mesa de Control PCI.">
+  <title>Mesa de Validacion HIT | PCI</title>
+  <meta name="description" content="Sistema de gestión de tickets y turnos para atención y validación de errores en folios HIT para Contratistas y Mesa de Validación PCI.">
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -66,12 +66,12 @@
           HIT
         </div>
         <div>
-          <h1 class="text-base sm:text-lg font-bold text-slate-900 leading-tight">Mesa de Errores HIT</h1>
+          <h1 class="text-base sm:text-lg font-bold text-slate-900 leading-tight">Mesa de Validacion HIT</h1>
           <p class="text-xs text-slate-500 hidden sm:block">Operación PCI • Atención a Contratistas</p>
         </div>
       </div>
 
-      <!-- Pestañas de Cambio de Entidad (Contratista / Mesa de Control / Ana Karen) -->
+      <!-- Pestañas de Cambio de Entidad (Contratista / Mesa de Control / Revisión TAC) -->
       <nav class="flex items-center space-x-2">
         <div class="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs sm:text-sm font-medium">
           <button type="button" id="tabContratista" class="px-3 py-1.5 rounded-lg bg-white text-brand-700 shadow-xs font-semibold flex items-center space-x-1.5 transition-all">
@@ -85,7 +85,7 @@
           </button>
           <button type="button" id="tabAnaKaren" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 flex items-center space-x-1.5 transition-all">
             <i data-lucide="check-square" class="w-3.5 h-3.5 text-slate-400"></i>
-            <span>Revisión Errores</span>
+            <span>Revisión TAC</span>
             <span id="badgeAnaKarenHeader" class="hidden ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-purple-600 text-white font-bold">0</span>
           </button>
         </div>
@@ -96,10 +96,10 @@
           <span class="hidden sm:inline">Cerrar Sesión</span>
         </button>
 
-        <!-- Botón Cerrar Sesión Ana Karen -->
-        <button type="button" id="btnCerrarSesionAnaKaren" title="Cerrar Sesión de Ana Karen" class="hidden px-2.5 py-1.5 rounded-xl border border-purple-200 text-purple-700 hover:bg-purple-50 text-xs font-semibold flex items-center space-x-1 transition-colors">
+        <!-- Botón Cerrar Sesión Revisión TAC -->
+        <button type="button" id="btnCerrarSesionAnaKaren" title="Cerrar Sesión de Revisión TAC" class="hidden px-2.5 py-1.5 rounded-xl border border-purple-200 text-purple-700 hover:bg-purple-50 text-xs font-semibold flex items-center space-x-1 transition-colors">
           <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
-          <span class="hidden sm:inline">Salir (Ana Karen)</span>
+          <span class="hidden sm:inline">Salir (Revisión TAC)</span>
         </button>
       </nav>
 
@@ -225,7 +225,7 @@
             <div>
               <h2 class="text-base font-bold text-slate-900">Reporte de Folios con Error en HIT</h2>
               <p class="text-xs text-slate-500 mt-0.5">
-                Completa tus datos de contacto y adjunta el archivo Excel. El sistema generará tu registro en Linkaform y te asignará tu turno.
+                Completa tus datos de contacto y adjunta el archivo Excel. El sistema generará tu registro en Integra y te asignará tu turno.
               </p>
             </div>
             <div id="badgeHorarioAtencion" class="shrink-0"></div>
@@ -372,7 +372,7 @@
         <div>
           <div class="flex items-center space-x-2">
             <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-brand-100 text-brand-800">
-              Mesa de Control HIT
+              Mesa de Validacion HIT
             </span>
             <span class="text-xs text-slate-400">• Forma 179149</span>
           </div>
@@ -409,10 +409,10 @@
         </div>
       </section>
 
-      <!-- Métricas Globales de Linkaform y del Día -->
+      <!-- Métricas Globales de Integra y del Día -->
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-          <span class="text-xs text-slate-500 font-semibold block uppercase">Total Base Linkaform</span>
+          <span class="text-xs text-slate-500 font-semibold block uppercase">Total Base Integra</span>
           <span id="metricTotalHistorico" class="text-2xl font-black text-slate-800">0</span>
           <span class="text-[10px] text-slate-400 block mt-0.5">Tickets registrados en BD</span>
         </div>
@@ -439,7 +439,7 @@
           
           <div class="flex items-center space-x-2">
             <i data-lucide="database" class="w-4 h-4 text-brand-600"></i>
-            <h3 class="text-sm font-bold text-slate-900">Histórico de Folios Linkaform</h3>
+            <h3 class="text-sm font-bold text-slate-900">Histórico de Folios Integra</h3>
             <span id="badgeConteoMostrados" class="text-xs font-mono font-bold bg-slate-200 text-slate-700 px-2 py-0.5 rounded-full">0</span>
           </div>
 
@@ -480,7 +480,7 @@
         <div id="ticketsContainer" class="divide-y divide-slate-100">
           <div class="p-12 text-center text-slate-400">
             <div class="inline-block animate-spin w-6 h-6 border-2 border-brand-600 border-t-transparent rounded-full mb-2"></div>
-            <p class="text-xs">Cargando tickets desde Linkaform...</p>
+            <p class="text-xs">Cargando tickets desde Integra...</p>
           </div>
         </div>
       </section>
@@ -488,27 +488,27 @@
     </div>
   </main>
 
-  <!-- CONTENIDO: VISTA DE ANA KAREN (REVISIÓN ESPECIAL DE ERRORES) -->
+  <!-- CONTENIDO: VISTA DE REVISIÓN TAC -->
   <main id="vistaAnaKaren" class="flex-1 py-8 px-4 sm:px-6 lg:px-8 hidden">
     <div class="max-w-6xl mx-auto space-y-6">
 
-      <!-- Panel Superior y Estado de Sesión de Ana Karen -->
+      <!-- Panel Superior y Estado de Sesión de Revisión TAC -->
       <section class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div class="flex items-center space-x-2">
             <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-100 text-purple-800 border border-purple-200">
-              Revisión Especial de Errores • Ana Karen
+              Revisión TAC
             </span>
-            <span class="text-xs text-slate-400">• Base Linkaform 179149</span>
+            <span class="text-xs text-slate-400">• Base Integra 179149</span>
           </div>
-          <h2 class="text-lg font-bold text-slate-900 mt-1">Revisión de Errores: Liquidación en PIC Móvil</h2>
+          <h2 class="text-lg font-bold text-slate-900 mt-1">Revisión TAC: Liquidación en PIC Móvil</h2>
           <p class="text-xs text-slate-500">
-            Filtro exclusivo para Ana Karen: <strong class="text-purple-700">"Verifica que tu folio sea el correcto y se encuentre liquidado completado en PIC Movil"</strong>.
+            Filtro exclusivo para Revisión TAC: <strong class="text-purple-700">"Verifica que tu folio sea el correcto y se encuentre liquidado completado en PIC Movil"</strong>.
           </p>
           <div class="flex flex-wrap items-center gap-2 mt-2">
             <span class="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold bg-purple-50 text-purple-800 border border-purple-200">
               <span class="w-2 h-2 rounded-full bg-purple-500 animate-pulse"></span>
-              <span>Sesión activa: <strong>Ana Karen</strong></span>
+              <span>Sesión activa: <strong>Revisión TAC</strong></span>
             </span>
             <button type="button" id="btnCerrarSesionAnaKarenInline" class="px-2 py-0.5 rounded-lg border border-slate-200 text-slate-500 hover:text-rose-600 hover:bg-rose-50 text-[11px] font-medium transition-colors" title="Cerrar Sesión">
               Cerrar sesión
@@ -516,7 +516,7 @@
           </div>
         </div>
 
-        <!-- Botones de Acción de Ana Karen -->
+        <!-- Botones de Acción de Revisión TAC -->
         <div class="flex flex-wrap items-center gap-2">
           <button type="button" id="btnRecargarAnaKaren" class="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white text-xs font-semibold shadow-xs flex items-center space-x-1.5 transition-colors">
             <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
@@ -524,7 +524,7 @@
           </button>
           <button type="button" id="btnExportarExcelAnaKaren" class="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs flex items-center space-x-1.5 transition-colors">
             <i data-lucide="download" class="w-3.5 h-3.5 text-slate-500"></i>
-            <span>Exportar Lista a Excel</span>
+            <span>Exportar Lista TAC a Excel</span>
           </button>
         </div>
       </section>
@@ -547,7 +547,7 @@
         </div>
       </div>
 
-      <!-- Métricas del Módulo de Ana Karen -->
+      <!-- Métricas del Módulo de Revisión TAC -->
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
           <span class="text-xs text-slate-500 font-semibold block uppercase">Total Errores PIC Móvil</span>
@@ -643,7 +643,7 @@
       </div>
       <div>
         <h3 id="loadingTitle" class="text-sm font-bold text-slate-900">Procesando...</h3>
-        <p id="loadingMessage" class="text-xs text-slate-500 mt-1">Conectando con Linkaform...</p>
+        <p id="loadingMessage" class="text-xs text-slate-500 mt-1">Conectando con Integra...</p>
       </div>
     </div>
   </div>
@@ -658,7 +658,7 @@
       <div class="space-y-1">
         <h3 class="text-xl font-bold text-slate-900">¡Error Registrado con Éxito!</h3>
         <p class="text-xs text-slate-500">
-          Tu ticket ha quedado guardado en Linkaform en estatus <strong>En Progreso</strong>.
+          Tu ticket ha quedado guardado en Integra en estatus <strong>En Progreso</strong>.
         </p>
       </div>
 
@@ -673,14 +673,14 @@
         </p>
       </div>
 
-      <!-- Folio Linkaform -->
+      <!-- Folio Integra -->
       <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs">
-        <span class="text-slate-400">Folio asignado en Linkaform:</span>
+        <span class="text-slate-400">Folio asignado en Integra:</span>
         <strong id="modalFolioDisplay" class="block font-mono text-slate-800 text-sm mt-0.5">--</strong>
       </div>
 
       <div class="text-xs text-slate-500 text-left bg-brand-50 p-3 rounded-xl border border-brand-100">
-        <p>📧 Cuando la responsable atienda tu problema y cambie el estatus a <strong>Finalizado</strong>, Linkaform te enviará un correo automático a <strong id="modalEmailDisplay">--</strong>.</p>
+        <p>📧 Cuando la responsable atienda tu problema y cambie el estatus a <strong>Finalizado</strong>, Integra te enviará un correo automático a <strong id="modalEmailDisplay">--</strong>.</p>
       </div>
 
       <button type="button" id="modalCerrarBtn" class="w-full py-2.5 px-4 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm transition-colors">
@@ -699,7 +699,7 @@
       <div class="space-y-1">
         <h3 class="text-lg font-bold text-slate-900">Acceso a Mesa de Control</h3>
         <p class="text-xs text-slate-500">
-          Módulo exclusivo para responsables (P. Hernández o C. Bautista). Ingresa tu PIN asignado para gestionar con tu usuario en Linkaform.
+          Módulo exclusivo para responsables (P. Hernández o C. Bautista). Ingresa tu PIN asignado para gestionar con tu usuario en Integra.
         </p>
       </div>
 
@@ -729,7 +729,7 @@
     </div>
   </div>
 
-  <!-- Modal de Autenticación para Ana Karen (PIN: 2468) -->
+  <!-- Modal de Autenticación para Revisión TAC (PIN: 2468) -->
   <div id="modalAuthAnaKaren" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden">
     <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center space-y-4 animate-scale-up">
       <div class="w-14 h-14 mx-auto rounded-2xl bg-purple-50 text-purple-700 border border-purple-200 flex items-center justify-center shadow-xs">
@@ -737,9 +737,9 @@
       </div>
 
       <div class="space-y-1">
-        <h3 class="text-lg font-bold text-slate-900">Acceso a Revisión Especial</h3>
+        <h3 class="text-lg font-bold text-slate-900">Acceso a Revisión TAC</h3>
         <p class="text-xs text-slate-500">
-          Módulo exclusivo para <strong>Ana Karen</strong>. Ingresa tu PIN de 4 dígitos para acceder al consolidado de errores.
+          Módulo exclusivo para <strong>Revisión TAC</strong>. Ingresa tu PIN de 4 dígitos para acceder al consolidado de errores.
         </p>
       </div>
 
@@ -754,7 +754,7 @@
 
         <p id="errorPinAnaKaren" class="text-xs text-rose-600 font-semibold hidden flex items-center justify-center space-x-1">
           <i data-lucide="alert-circle" class="w-3.5 h-3.5 shrink-0"></i>
-          <span>PIN incorrecto. Ingresa el PIN asignado a Ana Karen.</span>
+          <span>PIN incorrecto. Ingresa el PIN asignado a Revisión TAC.</span>
         </p>
 
         <div class="flex items-center space-x-2 pt-2">
@@ -770,9 +770,9 @@
   </div>
 
   <footer class="py-4 text-center text-xs text-slate-400 border-t border-slate-200 bg-white">
-    <p>Operación PCI • Mesa de Control HIT • Conexión Linkaform API</p>
+    <p>Operación PCI • Mesa de Validacion HIT • Conexión Integra API</p>
   </footer>
 
-  <script src="app.js?v=19"></script>
+  <script src="app.js?v=20"></script>
 </body>
 </html>
