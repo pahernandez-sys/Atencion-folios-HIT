@@ -40,6 +40,13 @@ const RESPONSABLES_CONFIG = [
   }
 ];
 
+// Configuración de la Colaboradora para Revisión Especial de Errores (Ana Karen)
+const ANA_KAREN_CONFIG = {
+  id: 'anakaren',
+  nombre: 'Ana Karen',
+  pinHash: 'a1fb4e703a9ef1fa4936801721ff285a97ac85330856674412e054892afe6972' // PIN: 2468
+};
+
 async function calcularSha256(texto) {
   if (window.crypto && crypto.subtle) {
     const msgUint8 = new TextEncoder().encode(texto);
@@ -50,6 +57,7 @@ async function calcularSha256(texto) {
   // Fallbacks seguros
   if (texto === '3546') return 'e8743787bbef7d5ffb65a3a13f7c51a90b3ce8b263b94b7bb3aeb7d35b7fa1ad';
   if (texto === '7890') return '6a95bbab63d587b596398c4bd7e91a132f24032d2007d107e5ea71967724b092';
+  if (texto === '2468') return 'a1fb4e703a9ef1fa4936801721ff285a97ac85330856674412e054892afe6972';
   return 'invalido';
 }
 
@@ -66,20 +74,38 @@ function estaAutenticadoMesa() {
   return false;
 }
 
+function estaAutenticadoAnaKaren() {
+  const auth = sessionStorage.getItem('ana_karen_autenticada');
+  if (auth === 'true') {
+    appState.anaKarenAutenticada = true;
+    return true;
+  }
+  appState.anaKarenAutenticada = false;
+  return false;
+}
+
 // Estado global de la aplicación
 const appState = {
-  activeTab: 'contratista', // 'contratista' | 'responsable'
+  activeTab: 'contratista', // 'contratista' | 'responsable' | 'anakaren'
   selectedFile: null,
   detectedFoliosCount: 0,
   isSubmitting: false,
   usuarioActivo: null, // Responsable logueado en Mesa de Control
+  anaKarenAutenticada: false, // Flag de sesión de Ana Karen
   jwtToken: null,
   todosLosTickets: [],
   ticketsHoy: [],
   filtroResponsable: 'pendientes', // 'pendientes' | 'todos' | 'finalizados' | 'historico'
   busquedaFiltro: '',
   responsableTurnoActual: 1,
-  ultimoTelefonoConsultado: null
+  ultimoTelefonoConsultado: null,
+
+  // Módulo de Revisión Especial de Errores (Ana Karen)
+  anaKarenItems: [],
+  anaKarenCargando: false,
+  anaKarenFiltroTipo: 'todos',
+  anaKarenFiltroEstatus: 'pendientes', // 'pendientes' | 'revisados' | 'todos'
+  anaKarenBusqueda: ''
 };
 
 // Almacén de borradores locales en edición para la Mesa de Control (evita pérdidas de texto al tipear o salir del cuadro)
@@ -231,7 +257,40 @@ const DOM = {
   btnToggleVerPin: document.getElementById('btnToggleVerPin'),
   iconVerPin: document.getElementById('iconVerPin'),
   errorPinMesa: document.getElementById('errorPinMesa'),
-  btnCancelarAuthMesa: document.getElementById('btnCancelarAuthMesa')
+  btnCancelarAuthMesa: document.getElementById('btnCancelarAuthMesa'),
+
+  // Módulo Ana Karen (Revisión Especial de Errores)
+  tabAnaKaren: document.getElementById('tabAnaKaren'),
+  badgeAnaKarenHeader: document.getElementById('badgeAnaKarenHeader'),
+  btnCerrarSesionAnaKaren: document.getElementById('btnCerrarSesionAnaKaren'),
+  btnCerrarSesionAnaKarenInline: document.getElementById('btnCerrarSesionAnaKarenInline'),
+  vistaAnaKaren: document.getElementById('vistaAnaKaren'),
+  btnRecargarAnaKaren: document.getElementById('btnRecargarAnaKaren'),
+  btnExportarExcelAnaKaren: document.getElementById('btnExportarExcelAnaKaren'),
+  progresoCargaAnaKaren: document.getElementById('progresoCargaAnaKaren'),
+  progresoTextoAnaKaren: document.getElementById('progresoTextoAnaKaren'),
+  progresoBarraAnaKaren: document.getElementById('progresoBarraAnaKaren'),
+  metricAnaKarenTotal: document.getElementById('metricAnaKarenTotal'),
+  metricAnaKarenPendientes: document.getElementById('metricAnaKarenPendientes'),
+  metricAnaKarenRevisados: document.getElementById('metricAnaKarenRevisados'),
+  metricAnaKarenArchivos: document.getElementById('metricAnaKarenArchivos'),
+  badgeAnaKarenMostrados: document.getElementById('badgeAnaKarenMostrados'),
+  selectTipoErrorAnaKaren: document.getElementById('selectTipoErrorAnaKaren'),
+  inputBuscarAnaKaren: document.getElementById('inputBuscarAnaKaren'),
+  filtroAnaKarenPendientes: document.getElementById('filtroAnaKarenPendientes'),
+  filtroAnaKarenRevisados: document.getElementById('filtroAnaKarenRevisados'),
+  filtroAnaKarenTodos: document.getElementById('filtroAnaKarenTodos'),
+  btnMarcarVisiblesAnaKaren: document.getElementById('btnMarcarVisiblesAnaKaren'),
+  contenedorErroresAnaKaren: document.getElementById('contenedorErroresAnaKaren'),
+
+  // Auth Ana Karen
+  modalAuthAnaKaren: document.getElementById('modalAuthAnaKaren'),
+  formAuthAnaKaren: document.getElementById('formAuthAnaKaren'),
+  inputPinAnaKaren: document.getElementById('inputPinAnaKaren'),
+  btnToggleVerPinAnaKaren: document.getElementById('btnToggleVerPinAnaKaren'),
+  iconVerPinAnaKaren: document.getElementById('iconVerPinAnaKaren'),
+  errorPinAnaKaren: document.getElementById('errorPinAnaKaren'),
+  btnCancelarAuthAnaKaren: document.getElementById('btnCancelarAuthAnaKaren')
 };
 
 // Inicialización de la aplicación
@@ -529,6 +588,8 @@ async function sincronizarTicketsYTurnos(silencioso = false) {
       } else {
         renderizarVistaResponsable();
       }
+    } else if (appState.activeTab === 'anakaren') {
+      await cargarErroresAnaKaren(false, silencioso);
     }
 
   } catch (err) {
@@ -1064,6 +1125,103 @@ function setupEventListeners() {
       if (window.lucide) window.lucide.createIcons();
     });
   }
+
+  // Eventos del Módulo de Ana Karen (Revisión Especial de Errores)
+  if (DOM.tabAnaKaren) {
+    DOM.tabAnaKaren.addEventListener('click', () => cambiarPestana('anakaren'));
+  }
+
+  if (DOM.btnCerrarSesionAnaKaren) {
+    DOM.btnCerrarSesionAnaKaren.addEventListener('click', cerrarSesionAnaKaren);
+  }
+  if (DOM.btnCerrarSesionAnaKarenInline) {
+    DOM.btnCerrarSesionAnaKarenInline.addEventListener('click', cerrarSesionAnaKaren);
+  }
+
+  if (DOM.btnRecargarAnaKaren) {
+    DOM.btnRecargarAnaKaren.addEventListener('click', () => cargarErroresAnaKaren(true));
+  }
+
+  if (DOM.btnExportarExcelAnaKaren) {
+    DOM.btnExportarExcelAnaKaren.addEventListener('click', exportarExcelAnaKaren);
+  }
+
+  if (DOM.selectTipoErrorAnaKaren) {
+    DOM.selectTipoErrorAnaKaren.addEventListener('change', (e) => {
+      appState.anaKarenFiltroTipo = e.target.value;
+      renderizarErroresAnaKaren();
+    });
+  }
+
+  if (DOM.inputBuscarAnaKaren) {
+    DOM.inputBuscarAnaKaren.addEventListener('input', (e) => {
+      appState.anaKarenBusqueda = e.target.value.toLowerCase().trim();
+      renderizarErroresAnaKaren();
+    });
+  }
+
+  if (DOM.filtroAnaKarenPendientes) {
+    DOM.filtroAnaKarenPendientes.addEventListener('click', () => {
+      appState.anaKarenFiltroEstatus = 'pendientes';
+      actualizarEstilosFiltrosAnaKaren();
+      renderizarErroresAnaKaren();
+    });
+  }
+
+  if (DOM.filtroAnaKarenRevisados) {
+    DOM.filtroAnaKarenRevisados.addEventListener('click', () => {
+      appState.anaKarenFiltroEstatus = 'revisados';
+      actualizarEstilosFiltrosAnaKaren();
+      renderizarErroresAnaKaren();
+    });
+  }
+
+  if (DOM.filtroAnaKarenTodos) {
+    DOM.filtroAnaKarenTodos.addEventListener('click', () => {
+      appState.anaKarenFiltroEstatus = 'todos';
+      actualizarEstilosFiltrosAnaKaren();
+      renderizarErroresAnaKaren();
+    });
+  }
+
+  if (DOM.btnMarcarVisiblesAnaKaren) {
+    DOM.btnMarcarVisiblesAnaKaren.addEventListener('click', marcarVisiblesComoAtendidosAnaKaren);
+  }
+
+  // Eventos de Autenticación de Ana Karen (PIN: 2468)
+  if (DOM.formAuthAnaKaren) {
+    DOM.formAuthAnaKaren.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const pinIngresado = DOM.inputPinAnaKaren ? DOM.inputPinAnaKaren.value.trim() : '';
+      const hash = await calcularSha256(pinIngresado);
+
+      if (hash === ANA_KAREN_CONFIG.pinHash || pinIngresado === '2468') {
+        sessionStorage.setItem('ana_karen_autenticada', 'true');
+        appState.anaKarenAutenticada = true;
+        cerrarModalAuthAnaKaren();
+        cambiarPestana('anakaren');
+      } else {
+        if (DOM.errorPinAnaKaren) DOM.errorPinAnaKaren.classList.remove('hidden');
+        if (DOM.inputPinAnaKaren) {
+          DOM.inputPinAnaKaren.select();
+          DOM.inputPinAnaKaren.focus();
+        }
+      }
+    });
+  }
+
+  if (DOM.btnCancelarAuthAnaKaren) {
+    DOM.btnCancelarAuthAnaKaren.addEventListener('click', cerrarModalAuthAnaKaren);
+  }
+
+  if (DOM.btnToggleVerPinAnaKaren) {
+    DOM.btnToggleVerPinAnaKaren.addEventListener('click', () => {
+      const isPassword = DOM.inputPinAnaKaren.type === 'password';
+      DOM.inputPinAnaKaren.type = isPassword ? 'text' : 'password';
+      DOM.iconVerPinAnaKaren.setAttribute('data-lucide', isPassword ? 'eye-off' : 'eye');
+      if (window.lucide) window.lucide.createIcons();
+    });
+  }
 }
 
 function abrirModalAuthMesa() {
@@ -1088,6 +1246,46 @@ function cerrarSesionMesa() {
   }
   cambiarPestana('contratista');
   autenticarLinkaform();
+}
+
+function abrirModalAuthAnaKaren() {
+  if (DOM.inputPinAnaKaren) DOM.inputPinAnaKaren.value = '';
+  if (DOM.errorPinAnaKaren) DOM.errorPinAnaKaren.classList.add('hidden');
+  if (DOM.modalAuthAnaKaren) DOM.modalAuthAnaKaren.classList.remove('hidden');
+  setTimeout(() => {
+    if (DOM.inputPinAnaKaren) DOM.inputPinAnaKaren.focus();
+  }, 100);
+}
+
+function cerrarModalAuthAnaKaren() {
+  if (DOM.modalAuthAnaKaren) DOM.modalAuthAnaKaren.classList.add('hidden');
+  if (DOM.inputPinAnaKaren) DOM.inputPinAnaKaren.value = '';
+  if (DOM.errorPinAnaKaren) DOM.errorPinAnaKaren.classList.add('hidden');
+}
+
+function cerrarSesionAnaKaren() {
+  sessionStorage.removeItem('ana_karen_autenticada');
+  appState.anaKarenAutenticada = false;
+  actualizarBotonesCerrarSesion();
+  cambiarPestana('contratista');
+}
+
+function actualizarBotonesCerrarSesion() {
+  if (DOM.btnCerrarSesionMesa) {
+    if (appState.activeTab === 'responsable' && estaAutenticadoMesa()) {
+      DOM.btnCerrarSesionMesa.classList.remove('hidden');
+    } else {
+      DOM.btnCerrarSesionMesa.classList.add('hidden');
+    }
+  }
+
+  if (DOM.btnCerrarSesionAnaKaren) {
+    if (appState.activeTab === 'anakaren' && estaAutenticadoAnaKaren()) {
+      DOM.btnCerrarSesionAnaKaren.classList.remove('hidden');
+    } else {
+      DOM.btnCerrarSesionAnaKaren.classList.add('hidden');
+    }
+  }
 }
 
 /**
@@ -1173,27 +1371,34 @@ async function cambiarPestana(tab) {
     abrirModalAuthMesa();
     return;
   }
+  if (tab === 'anakaren' && !estaAutenticadoAnaKaren()) {
+    abrirModalAuthAnaKaren();
+    return;
+  }
 
   appState.activeTab = tab;
+
+  const activoClass = 'px-3 py-1.5 rounded-lg bg-white text-brand-700 shadow-xs font-semibold flex items-center space-x-1.5 transition-all';
+  const activoPurpleClass = 'px-3 py-1.5 rounded-lg bg-white text-purple-700 shadow-xs font-semibold flex items-center space-x-1.5 transition-all';
+  const inactivoClass = 'px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 flex items-center space-x-1.5 transition-all';
+
+  if (DOM.vistaContratista) DOM.vistaContratista.classList.add('hidden');
+  if (DOM.vistaResponsable) DOM.vistaResponsable.classList.add('hidden');
+  if (DOM.vistaAnaKaren) DOM.vistaAnaKaren.classList.add('hidden');
+
+  if (DOM.tabContratista) DOM.tabContratista.className = inactivoClass;
+  if (DOM.tabResponsable) DOM.tabResponsable.className = inactivoClass;
+  if (DOM.tabAnaKaren) DOM.tabAnaKaren.className = inactivoClass;
+
+  actualizarBotonesCerrarSesion();
+
   if (tab === 'contratista') {
     actualizarUIHorarioContratista();
-    DOM.vistaContratista.classList.remove('hidden');
-    DOM.vistaResponsable.classList.add('hidden');
-    DOM.tabContratista.className = 'px-3.5 py-1.5 rounded-lg bg-white text-brand-700 shadow-xs font-semibold flex items-center space-x-1.5 transition-all';
-    DOM.tabResponsable.className = 'px-3.5 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 flex items-center space-x-1.5 transition-all';
-    if (DOM.btnCerrarSesionMesa) {
-      if (estaAutenticadoMesa()) {
-        DOM.btnCerrarSesionMesa.classList.remove('hidden');
-      } else {
-        DOM.btnCerrarSesionMesa.classList.add('hidden');
-      }
-    }
-  } else {
-    DOM.vistaContratista.classList.add('hidden');
-    DOM.vistaResponsable.classList.remove('hidden');
-    DOM.tabResponsable.className = 'px-3.5 py-1.5 rounded-lg bg-white text-brand-700 shadow-xs font-semibold flex items-center space-x-1.5 transition-all';
-    DOM.tabContratista.className = 'px-3.5 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 flex items-center space-x-1.5 transition-all';
-    if (DOM.btnCerrarSesionMesa) DOM.btnCerrarSesionMesa.classList.remove('hidden');
+    if (DOM.vistaContratista) DOM.vistaContratista.classList.remove('hidden');
+    if (DOM.tabContratista) DOM.tabContratista.className = activoClass;
+  } else if (tab === 'responsable') {
+    if (DOM.vistaResponsable) DOM.vistaResponsable.classList.remove('hidden');
+    if (DOM.tabResponsable) DOM.tabResponsable.className = activoClass;
     
     // Si ya tenemos tickets cargados en memoria, renderizarlos de inmediato sin esperar
     if (appState.todosLosTickets && appState.todosLosTickets.length > 0) {
@@ -1202,7 +1407,18 @@ async function cambiarPestana(tab) {
     }
     
     await sincronizarTicketsYTurnos();
+  } else if (tab === 'anakaren') {
+    if (DOM.vistaAnaKaren) DOM.vistaAnaKaren.classList.remove('hidden');
+    if (DOM.tabAnaKaren) DOM.tabAnaKaren.className = activoPurpleClass;
+    actualizarEstilosFiltrosAnaKaren();
+
+    if (appState.anaKarenItems && appState.anaKarenItems.length > 0) {
+      renderizarErroresAnaKaren();
+    }
+    await cargarErroresAnaKaren();
   }
+
+  actualizarBotonesCerrarSesion();
   if (window.lucide) window.lucide.createIcons();
 }
 
@@ -1833,3 +2049,662 @@ function actualizarLoading(titulo, msg) {
 function ocultarLoading() {
   DOM.loadingModal.classList.add('hidden');
 }
+
+/**
+ * ============================================================================
+ * MÓDULO ESPECIAL: REVISIÓN DE ERRORES EN ARCHIVOS EXCEL (ANA KAREN)
+ * ============================================================================
+ */
+
+// Cache en memoria para archivos Excel ya descargados y parseados
+let cacheArchivosExcel = {};
+try {
+  const cached = sessionStorage.getItem('ana_karen_cache_archivos');
+  if (cached) cacheArchivosExcel = JSON.parse(cached);
+} catch (e) {
+  cacheArchivosExcel = {};
+}
+
+function guardarEnCacheArchivos(url, items) {
+  if (!url) return;
+  cacheArchivosExcel[url] = items;
+  try {
+    sessionStorage.setItem('ana_karen_cache_archivos', JSON.stringify(cacheArchivosExcel));
+  } catch (e) {
+    console.warn('sessionStorage lleno, manteniendo en memoria');
+  }
+}
+
+// Almacén persistente de folios revisados / atendidos por Ana Karen
+const STORAGE_KEY_REVISADOS_ANA_KAREN = 'ana_karen_revisados_v1';
+
+function obtenerRevisadosAnaKaren() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_REVISADOS_ANA_KAREN);
+    return raw ? JSON.parse(raw) : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function guardarRevisadosAnaKaren(revisados) {
+  try {
+    localStorage.setItem(STORAGE_KEY_REVISADOS_ANA_KAREN, JSON.stringify(revisados));
+  } catch (e) {
+    console.warn('Error al guardar revisados en localStorage:', e);
+  }
+}
+
+/**
+ * Normaliza y clasifica los textos de error en categorías limpias y legibles
+ */
+function clasificarTipoError(errorTexto) {
+  const str = String(errorTexto || '').trim();
+  const lower = str.toLowerCase();
+
+  if (lower.includes('existe pero el tel') && lower.includes('no coincide')) {
+    return '[HIT] Folio existe pero el teléfono no coincide';
+  }
+  if (lower.includes('no se encontr') && lower.includes('registro de hit')) {
+    return 'No se encontró registro de HIT';
+  }
+  if (lower.includes('no se encontro registro con este folio y telefono') || (lower.includes('no se encontr') && lower.includes('folio y telefono'))) {
+    return 'No se encontró registro con este folio y teléfono';
+  }
+  if (lower.includes('se encontr') && (lower.includes('mas de un registro') || lower.includes('ms de un registro') || lower.includes('duplicad'))) {
+    return '[HIT] Se encontró más de un registro (Duplicados)';
+  }
+  if (lower.includes('tecnolog') && lower.includes('diferente')) {
+    return 'El folio ya fue cargado en una Tecnología diferente';
+  }
+  if (lower.includes('no trae su documento pdf') || lower.includes('documento pdf')) {
+    return 'El folio no trae su documento PDF';
+  }
+  if (lower.includes('pic movil') || lower.includes('liquidado completado')) {
+    return 'Verifica folio correcto y liquidado en PIC Móvil';
+  }
+  if (lower.includes('error desconocido')) {
+    return 'Error desconocido (contactar a soporte)';
+  }
+  return str.length > 60 ? `${str.slice(0, 57)}...` : str;
+}
+
+function escapeHTML(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+/**
+ * Llena el selector desplegable con las categorías de errores detectadas en los archivos
+ */
+function poblarTiposDeErrorAnaKaren(items) {
+  if (!DOM.selectTipoErrorAnaKaren) return;
+
+  const conteoPorCategoria = {};
+  items.forEach(it => {
+    const cat = it.errorCategoria || 'Otros Errores';
+    conteoPorCategoria[cat] = (conteoPorCategoria[cat] || 0) + 1;
+  });
+
+  const categoriasOrdenadas = Object.keys(conteoPorCategoria).sort((a, b) => {
+    return conteoPorCategoria[b] - conteoPorCategoria[a];
+  });
+
+  const valorActual = appState.anaKarenFiltroTipo;
+  DOM.selectTipoErrorAnaKaren.innerHTML = '';
+
+  const optTodos = document.createElement('option');
+  optTodos.value = 'todos';
+  optTodos.textContent = `Todos los tipos de error (${items.length})`;
+  DOM.selectTipoErrorAnaKaren.appendChild(optTodos);
+
+  categoriasOrdenadas.forEach(cat => {
+    const opt = document.createElement('option');
+    opt.value = cat;
+    opt.textContent = `${cat} (${conteoPorCategoria[cat]})`;
+    if (valorActual === cat) {
+      opt.selected = true;
+    }
+    DOM.selectTipoErrorAnaKaren.appendChild(opt);
+  });
+}
+
+/**
+ * Descarga y extrae los errores de todos los archivos Excel adjuntos en Linkaform
+ */
+async function cargarErroresAnaKaren(forzar = false, silencioso = false) {
+  if (appState.anaKarenCargando) return;
+  appState.anaKarenCargando = true;
+
+  if (DOM.btnRecargarAnaKaren) {
+    DOM.btnRecargarAnaKaren.disabled = true;
+    DOM.btnRecargarAnaKaren.innerHTML = '<span class="inline-block animate-spin w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full mr-1"></span><span>Sincronizando...</span>';
+  }
+
+  try {
+    // 1. Asegurar que los tickets de Linkaform estén cargados
+    if (!appState.todosLosTickets || appState.todosLosTickets.length === 0) {
+      await sincronizarTicketsYTurnos(true);
+    }
+
+    const tickets = appState.todosLosTickets || [];
+    
+    // Recopilar todos los archivos Excel adjuntos con su metadata
+    const archivosPendientes = [];
+    tickets.forEach(ticket => {
+      const answers = ticket.answers || {};
+      const excelFiles = answers[LINKAFORM_CONFIG.fieldIds.excel] || [];
+      const contratista = answers[LINKAFORM_CONFIG.fieldIds.nombre] || '';
+      const telefono = answers[LINKAFORM_CONFIG.fieldIds.telefono] || '';
+      const email = answers[LINKAFORM_CONFIG.fieldIds.email] || '';
+
+      if (Array.isArray(excelFiles)) {
+        excelFiles.forEach(file => {
+          if (file && file.file_url) {
+            archivosPendientes.push({
+              ticket,
+              file,
+              contratista,
+              telefono,
+              email
+            });
+          }
+        });
+      }
+    });
+
+    if (DOM.metricAnaKarenArchivos) {
+      DOM.metricAnaKarenArchivos.textContent = archivosPendientes.length;
+    }
+
+    if (forzar) {
+      cacheArchivosExcel = {};
+      try { sessionStorage.removeItem('ana_karen_cache_archivos'); } catch(e){}
+    }
+
+    // 2. Descargar y parsear archivos con barra de progreso
+    const totalArchivos = archivosPendientes.length;
+    let procesados = 0;
+    const todosLosErrores = [];
+
+    if (DOM.progresoCargaAnaKaren && !silencioso) {
+      DOM.progresoCargaAnaKaren.classList.remove('hidden');
+      if (DOM.progresoBarraAnaKaren) DOM.progresoBarraAnaKaren.style.width = '0%';
+      if (DOM.progresoTextoAnaKaren) DOM.progresoTextoAnaKaren.textContent = `Descargando y extrayendo errores de ${totalArchivos} archivos Excel...`;
+    }
+
+    async function procesarArchivo(item) {
+      const { ticket, file, contratista, telefono, email } = item;
+      const fileUrl = file.file_url;
+      const fileName = file.file_name || 'Archivo.xlsx';
+
+      if (cacheArchivosExcel[fileUrl]) {
+        return cacheArchivosExcel[fileUrl];
+      }
+
+      try {
+        const res = await fetch(fileUrl);
+        if (!res.ok) {
+          console.warn('Fallo al descargar archivo:', fileUrl, res.status);
+          return [];
+        }
+        const arrayBuf = await res.arrayBuffer();
+        const wb = XLSX.read(new Uint8Array(arrayBuf), { type: 'array' });
+        const firstSheetName = wb.SheetNames[0];
+        const sheet = wb.Sheets[firstSheetName];
+        const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+
+        if (!rawRows || rawRows.length < 2) {
+          guardarEnCacheArchivos(fileUrl, []);
+          return [];
+        }
+
+        const headerRow = rawRows[0] || [];
+        let colFolio = -1;
+        let colError = -1;
+
+        headerRow.forEach((col, idx) => {
+          const colName = String(col || '').toLowerCase().trim();
+          if (colName.includes('folio') && colFolio === -1) colFolio = idx;
+          if (colName.includes('error') && colError === -1) colError = idx;
+        });
+
+        if (colFolio === -1) colFolio = 0;
+        if (colError === -1) colError = headerRow.length - 1;
+
+        const itemsExtraidos = [];
+        for (let r = 1; r < rawRows.length; r++) {
+          const row = rawRows[r];
+          if (!row || !row.length) continue;
+
+          const valFolio = String(row[colFolio] !== undefined ? row[colFolio] : '').trim();
+          const valError = String(row[colError] !== undefined ? row[colError] : '').trim();
+
+          if (valFolio || valError) {
+            const itemObj = {
+              id: `${ticket.id || ticket.folio}_r${r}_${valFolio || 'row'}`,
+              ticketId: ticket.id,
+              ticketFolio: ticket.folio || ticket.id || 'Sin Folio',
+              ticketCreatedAt: ticket.created_at,
+              contratistaNombre: contratista,
+              contratistaTelefono: telefono,
+              contratistaEmail: email,
+              archivoNombre: fileName,
+              archivoUrl: fileUrl,
+              folioHit: valFolio || 'Sin Folio',
+              errorTexto: valError || 'Sin descripción de error',
+              errorCategoria: clasificarTipoError(valError),
+              filaExcel: r + 1
+            };
+            itemsExtraidos.push(itemObj);
+          }
+        }
+
+        guardarEnCacheArchivos(fileUrl, itemsExtraidos);
+        return itemsExtraidos;
+      } catch (err) {
+        console.warn('Error al procesar archivo Excel:', fileName, err);
+        return [];
+      }
+    }
+
+    // Procesar en lotes concurrentes de 5 para máxima velocidad
+    const batchSize = 5;
+    for (let i = 0; i < archivosPendientes.length; i += batchSize) {
+      const lote = archivosPendientes.slice(i, i + batchSize);
+      const resultadosLote = await Promise.all(lote.map(procesarArchivo));
+      
+      resultadosLote.forEach(res => {
+        todosLosErrores.push(...res);
+      });
+
+      procesados += lote.length;
+      if (DOM.progresoBarraAnaKaren && totalArchivos > 0) {
+        const pct = Math.round((procesados / totalArchivos) * 100);
+        DOM.progresoBarraAnaKaren.style.width = `${pct}%`;
+        if (DOM.progresoTextoAnaKaren) {
+          DOM.progresoTextoAnaKaren.textContent = `Procesando archivos: ${procesados} de ${totalArchivos} (${todosLosErrores.length} errores encontrados)...`;
+        }
+      }
+    }
+
+    appState.anaKarenItems = todosLosErrores;
+
+    // 3. Poblar dropdown dinámico de tipos de error
+    poblarTiposDeErrorAnaKaren(todosLosErrores);
+
+    // 4. Renderizar vista y actualizar métricas
+    renderizarErroresAnaKaren();
+
+  } catch (err) {
+    console.error('Error general en cargarErroresAnaKaren:', err);
+    if (DOM.contenedorErroresAnaKaren) {
+      DOM.contenedorErroresAnaKaren.innerHTML = `
+        <div class="p-8 text-center text-rose-800 bg-rose-50 rounded-xl m-4 border border-rose-200">
+          <i data-lucide="alert-octagon" class="w-8 h-8 mx-auto mb-2 text-rose-600"></i>
+          <p class="font-bold text-sm">Ocurrió un error al procesar los archivos de error.</p>
+          <p class="text-xs text-rose-600 mt-1">${err.message || 'Error de red o procesamiento'}</p>
+          <button type="button" onclick="cargarErroresAnaKaren(true)" class="mt-3 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-xs shadow-xs">
+            Reintentar
+          </button>
+        </div>
+      `;
+      if (window.lucide) window.lucide.createIcons();
+    }
+  } finally {
+    appState.anaKarenCargando = false;
+    if (DOM.progresoCargaAnaKaren) {
+      setTimeout(() => DOM.progresoCargaAnaKaren.classList.add('hidden'), 500);
+    }
+    if (DOM.btnRecargarAnaKaren) {
+      DOM.btnRecargarAnaKaren.disabled = false;
+      DOM.btnRecargarAnaKaren.innerHTML = '<i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i><span>Sincronizar y Recargar</span>';
+      if (window.lucide) window.lucide.createIcons();
+    }
+  }
+}
+
+/**
+ * Renderiza la lista consolidada de errores filtrada en tiempo real
+ */
+function renderizarErroresAnaKaren() {
+  if (!DOM.contenedorErroresAnaKaren) return;
+
+  const revisados = obtenerRevisadosAnaKaren();
+  const todos = appState.anaKarenItems || [];
+
+  // Calcular métricas
+  const total = todos.length;
+  const atendidosCount = todos.filter(it => !!revisados[it.id]?.revisado).length;
+  const pendientesCount = total - atendidosCount;
+
+  if (DOM.metricAnaKarenTotal) DOM.metricAnaKarenTotal.textContent = total;
+  if (DOM.metricAnaKarenPendientes) DOM.metricAnaKarenPendientes.textContent = pendientesCount;
+  if (DOM.metricAnaKarenRevisados) DOM.metricAnaKarenRevisados.textContent = atendidosCount;
+
+  if (DOM.badgeAnaKarenHeader) {
+    if (pendientesCount > 0) {
+      DOM.badgeAnaKarenHeader.textContent = pendientesCount;
+      DOM.badgeAnaKarenHeader.classList.remove('hidden');
+    } else {
+      DOM.badgeAnaKarenHeader.classList.add('hidden');
+    }
+  }
+
+  actualizarEstilosFiltrosAnaKaren();
+
+  // Filtrado de items
+  const filtroTipo = appState.anaKarenFiltroTipo;
+  const filtroEstatus = appState.anaKarenFiltroEstatus;
+  const busqueda = (appState.anaKarenBusqueda || '').toLowerCase().trim();
+
+  const filtrados = todos.filter(item => {
+    const esRev = !!revisados[item.id]?.revisado;
+
+    // 1. Filtro por estatus de atención
+    if (filtroEstatus === 'pendientes' && esRev) return false;
+    if (filtroEstatus === 'revisados' && !esRev) return false;
+
+    // 2. Filtro por tipo/categoría de error
+    if (filtroTipo !== 'todos') {
+      if (item.errorCategoria !== filtroTipo && !item.errorTexto.toLowerCase().includes(filtroTipo.toLowerCase())) {
+        return false;
+      }
+    }
+
+    // 3. Buscador en tiempo real
+    if (busqueda) {
+      const matchFolio = item.folioHit.toLowerCase().includes(busqueda);
+      const matchError = item.errorTexto.toLowerCase().includes(busqueda);
+      const matchContratista = (item.contratistaNombre || '').toLowerCase().includes(busqueda);
+      const matchTicket = item.ticketFolio.toLowerCase().includes(busqueda);
+      const matchTel = item.contratistaTelefono.includes(busqueda);
+
+      if (!matchFolio && !matchError && !matchContratista && !matchTicket && !matchTel) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  if (DOM.badgeAnaKarenMostrados) {
+    DOM.badgeAnaKarenMostrados.textContent = `${filtrados.length} mostrados`;
+  }
+
+  DOM.contenedorErroresAnaKaren.innerHTML = '';
+
+  if (filtrados.length === 0) {
+    DOM.contenedorErroresAnaKaren.innerHTML = `
+      <div class="p-12 text-center text-slate-500 space-y-2">
+        <div class="w-12 h-12 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center mx-auto mb-2">
+          <i data-lucide="check-check" class="w-6 h-6"></i>
+        </div>
+        <p class="font-bold text-sm text-slate-700">No se encontraron errores con los filtros seleccionados.</p>
+        <p class="text-xs text-slate-400 max-w-sm mx-auto">
+          ${filtroEstatus === 'pendientes' ? '¡Excelente! Todos los errores de este tipo han sido marcados como atendidos o no hay coincidencias.' : 'Ajusta el tipo de error o el término de búsqueda.'}
+        </p>
+      </div>
+    `;
+    if (window.lucide) window.lucide.createIcons();
+    return;
+  }
+
+  filtrados.forEach(item => {
+    const esRevisado = !!revisados[item.id]?.revisado;
+    const revInfo = revisados[item.id] || {};
+
+    let fechaStr = '--';
+    if (item.ticketCreatedAt) {
+      const d = new Date(item.ticketCreatedAt * 1000);
+      fechaStr = d.toLocaleDateString('es-MX', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+
+    let fechaRevStr = '';
+    if (revInfo.fecha) {
+      const dRev = new Date(revInfo.fecha);
+      fechaRevStr = dRev.toLocaleDateString('es-MX', {
+        day: '2-digit',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+
+    const rowEl = document.createElement('div');
+    rowEl.className = `p-4 sm:p-5 hover:bg-slate-50/80 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4 ${esRevisado ? 'bg-emerald-50/20' : ''}`;
+    
+    rowEl.innerHTML = `
+      <div class="space-y-2 flex-1 min-w-0">
+        <!-- Barra de estado y Folio HIT -->
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-sm sm:text-base font-black font-mono text-slate-900 bg-slate-100 px-2.5 py-0.5 rounded-lg border border-slate-200">
+            Folio: ${escapeHTML(item.folioHit)}
+          </span>
+          <span class="px-2.5 py-0.5 rounded-full text-xs font-bold ${esRevisado ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-amber-100 text-amber-800 border border-amber-200'}">
+            ${esRevisado ? '✓ Atendido por Ana Karen' : '⚡ Pendiente de Revisión'}
+          </span>
+          <span class="text-[11px] font-semibold text-purple-700 bg-purple-50 border border-purple-200 px-2.5 py-0.5 rounded-md">
+            ${escapeHTML(item.errorCategoria)}
+          </span>
+        </div>
+
+        <!-- Mensaje de Error en Excel -->
+        <div class="bg-rose-50/90 border border-rose-200 rounded-xl p-3 text-xs text-rose-950 font-mono shadow-2xs">
+          <span class="text-rose-900 font-bold block text-[10px] uppercase tracking-wider mb-0.5">Detalle del Error en Excel:</span>
+          <p class="break-words font-medium leading-relaxed">${escapeHTML(item.errorTexto)}</p>
+        </div>
+
+        <!-- Metadata de Contratista, Ticket Linkaform y Archivo -->
+        <div class="flex flex-wrap items-center text-xs text-slate-500 gap-x-4 gap-y-1 pt-0.5">
+          <span>👤 Contratista: <strong class="text-slate-700">${escapeHTML(item.contratistaNombre || 'Sin nombre')}</strong> (${escapeHTML(item.contratistaTelefono)})</span>
+          <span>🎫 Ticket: <strong class="font-mono text-slate-700">${escapeHTML(item.ticketFolio)}</strong></span>
+          <span>📅 ${fechaStr}</span>
+          ${item.archivoUrl ? `
+            <a href="${item.archivoUrl}" target="_blank" rel="noopener noreferrer" class="text-purple-600 hover:text-purple-800 hover:underline flex items-center space-x-1 font-semibold" title="Descargar archivo Excel original">
+              <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i>
+              <span>${escapeHTML(item.archivoNombre)} (Fila ${item.filaExcel})</span>
+            </a>
+          ` : ''}
+          ${esRevisado && fechaRevStr ? `<span class="text-emerald-700 font-medium">✓ Atendido el: ${fechaRevStr}</span>` : ''}
+        </div>
+      </div>
+
+      <!-- Botón de Acción Rápida: Marcar Atendido / Volver a Pendiente -->
+      <div class="flex items-center space-x-2 shrink-0 md:self-center">
+        ${esRevisado ? `
+          <button type="button" onclick="desmarcarRevisadoAnaKaren('${item.id}')" class="px-3.5 py-2 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-600 text-xs font-semibold flex items-center space-x-1.5 transition-colors">
+            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+            <span>Volver a Pendiente</span>
+          </button>
+        ` : `
+          <button type="button" onclick="marcarRevisadoAnaKaren('${item.id}')" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-bold shadow-xs flex items-center space-x-1.5 transition-colors">
+            <i data-lucide="check" class="w-4 h-4"></i>
+            <span>Marcar como Atendido</span>
+          </button>
+        `}
+      </div>
+    `;
+
+    DOM.contenedorErroresAnaKaren.appendChild(rowEl);
+  });
+
+  if (window.lucide) window.lucide.createIcons();
+}
+
+/**
+ * Marca un error individual como Atendido por Ana Karen
+ */
+function marcarRevisadoAnaKaren(itemId) {
+  if (!itemId) return;
+  const revisados = obtenerRevisadosAnaKaren();
+  revisados[itemId] = {
+    revisado: true,
+    fecha: new Date().toISOString(),
+    usuario: 'Ana Karen'
+  };
+  guardarRevisadosAnaKaren(revisados);
+  renderizarErroresAnaKaren();
+}
+
+/**
+ * Devuelve un error marcado al estado Pendiente
+ */
+function desmarcarRevisadoAnaKaren(itemId) {
+  if (!itemId) return;
+  const revisados = obtenerRevisadosAnaKaren();
+  delete revisados[itemId];
+  guardarRevisadosAnaKaren(revisados);
+  renderizarErroresAnaKaren();
+}
+
+/**
+ * Marca en bloque todos los errores actualmente visibles en el filtro
+ */
+function marcarVisiblesComoAtendidosAnaKaren() {
+  const revisados = obtenerRevisadosAnaKaren();
+  const todos = appState.anaKarenItems || [];
+  const filtroTipo = appState.anaKarenFiltroTipo;
+  const filtroEstatus = appState.anaKarenFiltroEstatus;
+  const busqueda = (appState.anaKarenBusqueda || '').toLowerCase().trim();
+
+  const visibles = todos.filter(item => {
+    const esRev = !!revisados[item.id]?.revisado;
+    if (filtroEstatus === 'pendientes' && esRev) return false;
+    if (filtroEstatus === 'revisados' && !esRev) return false;
+
+    if (filtroTipo !== 'todos') {
+      if (item.errorCategoria !== filtroTipo && !item.errorTexto.toLowerCase().includes(filtroTipo.toLowerCase())) {
+        return false;
+      }
+    }
+
+    if (busqueda) {
+      const matchFolio = item.folioHit.toLowerCase().includes(busqueda);
+      const matchError = item.errorTexto.toLowerCase().includes(busqueda);
+      const matchContratista = (item.contratistaNombre || '').toLowerCase().includes(busqueda);
+      const matchTicket = item.ticketFolio.toLowerCase().includes(busqueda);
+      const matchTel = item.contratistaTelefono.includes(busqueda);
+      if (!matchFolio && !matchError && !matchContratista && !matchTicket && !matchTel) return false;
+    }
+    return true;
+  });
+
+  if (visibles.length === 0) {
+    alert('No hay errores mostrados para marcar.');
+    return;
+  }
+
+  const confirmar = confirm(`¿Deseas marcar como atendidos los ${visibles.length} errores mostrados actualmente?`);
+  if (!confirmar) return;
+
+  const ahora = new Date().toISOString();
+  visibles.forEach(it => {
+    revisados[it.id] = {
+      revisado: true,
+      fecha: ahora,
+      usuario: 'Ana Karen'
+    };
+  });
+
+  guardarRevisadosAnaKaren(revisados);
+  renderizarErroresAnaKaren();
+}
+
+/**
+ * Exporta el listado consolidado de errores a un archivo Excel (.xlsx) con SheetJS
+ */
+function exportarExcelAnaKaren() {
+  const todos = appState.anaKarenItems || [];
+  if (todos.length === 0) {
+    alert('No hay registros de errores procesados para exportar.');
+    return;
+  }
+
+  const revisados = obtenerRevisadosAnaKaren();
+  const filtroTipo = appState.anaKarenFiltroTipo;
+  const filtroEstatus = appState.anaKarenFiltroEstatus;
+  const busqueda = (appState.anaKarenBusqueda || '').toLowerCase().trim();
+
+  // Exportar los que coincidan con los filtros activos
+  const visibles = todos.filter(item => {
+    const esRev = !!revisados[item.id]?.revisado;
+    if (filtroEstatus === 'pendientes' && esRev) return false;
+    if (filtroEstatus === 'revisados' && !esRev) return false;
+
+    if (filtroTipo !== 'todos') {
+      if (item.errorCategoria !== filtroTipo && !item.errorTexto.toLowerCase().includes(filtroTipo.toLowerCase())) {
+        return false;
+      }
+    }
+
+    if (busqueda) {
+      const matchFolio = item.folioHit.toLowerCase().includes(busqueda);
+      const matchError = item.errorTexto.toLowerCase().includes(busqueda);
+      const matchContratista = (item.contratistaNombre || '').toLowerCase().includes(busqueda);
+      const matchTicket = item.ticketFolio.toLowerCase().includes(busqueda);
+      const matchTel = item.contratistaTelefono.includes(busqueda);
+      if (!matchFolio && !matchError && !matchContratista && !matchTicket && !matchTel) return false;
+    }
+    return true;
+  });
+
+  const datosAExportar = visibles.length > 0 ? visibles : todos;
+
+  const filas = datosAExportar.map(item => {
+    const rev = revisados[item.id];
+    const esRev = !!rev?.revisado;
+
+    let fechaTicketStr = '';
+    if (item.ticketCreatedAt) {
+      const d = new Date(item.ticketCreatedAt * 1000);
+      fechaTicketStr = d.toLocaleString('es-MX');
+    }
+
+    let fechaRevStr = '';
+    if (rev?.fecha) {
+      const dRev = new Date(rev.fecha);
+      fechaRevStr = dRev.toLocaleString('es-MX');
+    }
+
+    return {
+      'Folio HIT': item.folioHit,
+      'Error Reportado': item.errorTexto,
+      'Categoría Error': item.errorCategoria,
+      'Estatus Revisión': esRev ? 'Atendido por Ana Karen' : 'Pendiente',
+      'Fecha Atención': fechaRevStr || 'Pendiente',
+      'Contratista': item.contratistaNombre || 'Sin especificar',
+      'Teléfono': item.contratistaTelefono,
+      'Correo': item.contratistaEmail,
+      'Folio Ticket Linkaform': item.ticketFolio,
+      'Fecha Ticket Linkaform': fechaTicketStr,
+      'Archivo Excel': item.archivoNombre,
+      'Fila en Excel': item.filaExcel,
+      'Enlace Descarga Archivo': item.archivoUrl
+    };
+  });
+
+  const ws = XLSX.utils.json_to_sheet(filas);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Errores Folios HIT');
+
+  const hoyStr = getHoyDateString();
+  XLSX.writeFile(wb, `Revision_Errores_HIT_Ana_Karen_${hoyStr}.xlsx`);
+}
+
+// Exponer funciones globales para los eventos onclick en HTML
+window.marcarRevisadoAnaKaren = marcarRevisadoAnaKaren;
+window.desmarcarRevisadoAnaKaren = desmarcarRevisadoAnaKaren;
+window.cerrarSesionAnaKaren = cerrarSesionAnaKaren;
+window.cargarErroresAnaKaren = cargarErroresAnaKaren;
