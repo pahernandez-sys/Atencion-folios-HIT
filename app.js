@@ -2227,6 +2227,19 @@ async function descargarExcelMesaControl(ticketId, fileUrl, rawFileName) {
       throw new Error(`Error HTTP al obtener archivo (${res.status})`);
     }
 
+    const ext = (fileName || '').split('.').pop().toLowerCase();
+    if (!['xlsx', 'xls', 'xlsm', 'csv'].includes(ext)) {
+      // Si el archivo adjunto no es una hoja de cálculo (ej. PDF adjunto), descargarlo directamente
+      const a = document.createElement('a');
+      a.href = fileUrl;
+      a.download = fileName;
+      a.target = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      return;
+    }
+
     const arrayBuf = await res.arrayBuffer();
     const wb = XLSX.read(new Uint8Array(arrayBuf), { type: 'array' });
     const sheetName = wb.SheetNames[0] || 'Hoja1';
@@ -2245,13 +2258,24 @@ async function descargarExcelMesaControl(ticketId, fileUrl, rawFileName) {
 
     headerRow.forEach((col, idx) => {
       const colName = String(col || '').toLowerCase().trim();
-      if (colName.includes('folio') && colFolio === -1) colFolio = idx;
-      if ((colName.includes('error') || colName.includes('estatus') || colName.includes('observaci') || colName.includes('detalle') || colName.includes('motivo')) && colError === -1) {
+      if ((colName.includes('folio') || colName === 'ot' || colName === 'orden') && colFolio === -1) {
+        colFolio = idx;
+      }
+      // Si el archivo trae 2, 3 o 4 columnas de error, se toma la ÚLTIMA columna únicamente
+      if (colName.includes('error') || colName.includes('errores')) {
         colError = idx;
       }
     });
 
     if (colFolio === -1) colFolio = 0;
+    if (colError === -1) {
+      headerRow.forEach((col, idx) => {
+        const colName = String(col || '').toLowerCase().trim();
+        if (colName.includes('observaci') || colName.includes('motivo') || colName.includes('detalle') || colName.includes('estatus')) {
+          colError = idx;
+        }
+      });
+    }
     if (colError === -1) colError = headerRow.length - 1;
 
     const filasFiltradas = [headerRow];
@@ -2608,6 +2632,12 @@ async function cargarErroresAnaKaren(forzar = false, silencioso = false) {
           console.warn('Fallo al descargar archivo:', fileUrl, res.status);
           return [];
         }
+        const ext = (fileName || '').split('.').pop().toLowerCase();
+        if (!['xlsx', 'xls', 'xlsm', 'csv'].includes(ext)) {
+          guardarEnCacheArchivos(fileUrl, []);
+          return [];
+        }
+
         const arrayBuf = await res.arrayBuffer();
         const wb = XLSX.read(new Uint8Array(arrayBuf), { type: 'array' });
         const firstSheetName = wb.SheetNames[0];
@@ -2625,11 +2655,24 @@ async function cargarErroresAnaKaren(forzar = false, silencioso = false) {
 
         headerRow.forEach((col, idx) => {
           const colName = String(col || '').toLowerCase().trim();
-          if (colName.includes('folio') && colFolio === -1) colFolio = idx;
-          if (colName.includes('error') && colError === -1) colError = idx;
+          if ((colName.includes('folio') || colName === 'ot' || colName === 'orden') && colFolio === -1) {
+            colFolio = idx;
+          }
+          // Si el archivo trae 2, 3 o 4 columnas de error, se toma la ÚLTIMA columna únicamente
+          if (colName.includes('error') || colName.includes('errores')) {
+            colError = idx;
+          }
         });
 
         if (colFolio === -1) colFolio = 0;
+        if (colError === -1) {
+          headerRow.forEach((col, idx) => {
+            const colName = String(col || '').toLowerCase().trim();
+            if (colName.includes('observaci') || colName.includes('motivo') || colName.includes('detalle') || colName.includes('estatus')) {
+              colError = idx;
+            }
+          });
+        }
         if (colError === -1) colError = headerRow.length - 1;
 
         const itemsExtraidos = [];
@@ -3755,6 +3798,13 @@ async function analizarExcelsParaDashboard(forzar = false) {
     const fileUrl = file.file_url;
     const fileName = file.file_name || 'Archivo.xlsx';
 
+    // 1. Omitir archivos no admitidos (como PDFs o imágenes) que SheetJS interpretaría erróneamente como hojas de cálculo
+    const ext = (fileName || '').split('.').pop().toLowerCase();
+    if (!['xlsx', 'xls', 'xlsm', 'csv'].includes(ext)) {
+      cacheTodosLosErroresExcel[fileUrl] = [];
+      return [];
+    }
+
     if (cacheTodosLosErroresExcel[fileUrl]) {
       return cacheTodosLosErroresExcel[fileUrl];
     }
@@ -3777,16 +3827,32 @@ async function analizarExcelsParaDashboard(forzar = false) {
       let colFolio = -1;
       let colError = -1;
 
+      // Buscar columna de folio y la ÚLTIMA columna de error si el archivo trae 2, 3 o 4 columnas de error
       headerRow.forEach((col, idx) => {
         const colName = String(col || '').toLowerCase().trim();
-        if (colName.includes('folio') && colFolio === -1) colFolio = idx;
-        if (colName.includes('error') && colError === -1) colError = idx;
+        if ((colName.includes('folio') || colName === 'ot' || colName === 'orden') && colFolio === -1) {
+          colFolio = idx;
+        }
+        // Si hay múltiples columnas de error, se toma la ÚLTIMA columna únicamente
+        if (colName.includes('error') || colName.includes('errores')) {
+          colError = idx;
+        }
       });
 
       if (colFolio === -1) colFolio = 0;
+      if (colError === -1) {
+        headerRow.forEach((col, idx) => {
+          const colName = String(col || '').toLowerCase().trim();
+          if (colName.includes('observaci') || colName.includes('motivo') || colName.includes('detalle') || colName.includes('estatus')) {
+            colError = idx;
+          }
+        });
+      }
       if (colError === -1) colError = headerRow.length - 1;
 
       const items = [];
+      const ticketFoliosVistos = new Set();
+
       for (let r = 1; r < rawRows.length; r++) {
         const row = rawRows[r];
         if (!row || !row.length) continue;
@@ -3794,20 +3860,41 @@ async function analizarExcelsParaDashboard(forzar = false) {
         const valFolio = String(row[colFolio] !== undefined ? row[colFolio] : '').trim();
         const valError = String(row[colError] !== undefined ? row[colError] : '').trim();
 
-        if (valFolio || valError) {
-          const cat = categorizarErrorDashboard(valError);
-          items.push({
-            folio: valFolio,
-            errorTexto: valError,
-            categoria: cat.categoria,
-            clave: cat.clave,
-            ticketId: ticket.id,
-            ticketFolio: ticket.folio || ticket.id,
-            ticketCreatedAt: ticket.created_at,
-            contratista: contratista,
-            archivoNombre: fileName
-          });
+        // Regla: Cada folio sólo puede contener un error válido.
+        // Omitir si la descripción está vacía, no aporta error o es marcador nulo/n/a/ok
+        if (!valError || ['n/a', '-', '--', 'sin error', 'ok', 'ninguno', 'null', 'undefined'].includes(valError.toLowerCase())) {
+          continue;
         }
+
+        // Omitir si es repetición del encabezado
+        if (valFolio.toLowerCase() === 'folio' || valFolio.toLowerCase() === 'ot') {
+          continue;
+        }
+
+        // Unicidad por folio dentro de la misma solicitud
+        const claveFolio = `${ticket.id}_${valFolio || ('fila_' + r)}`;
+        if (ticketFoliosVistos.has(claveFolio)) {
+          continue;
+        }
+        ticketFoliosVistos.add(claveFolio);
+
+        const cat = categorizarErrorDashboard(valError);
+        // Descartar si el resultado es "Sin descripción de error" para evitar confusiones
+        if (!cat || cat.clave === 'sin_error' || cat.categoria === 'Sin descripción de error') {
+          continue;
+        }
+
+        items.push({
+          folio: valFolio,
+          errorTexto: valError,
+          categoria: cat.categoria,
+          clave: cat.clave,
+          ticketId: ticket.id,
+          ticketFolio: ticket.folio || ticket.id,
+          ticketCreatedAt: ticket.created_at,
+          contratista: contratista,
+          archivoNombre: fileName
+        });
       }
 
       cacheTodosLosErroresExcel[fileUrl] = items;
@@ -3883,8 +3970,10 @@ function renderizarTiposErrorDashboard() {
   // Agrupar por categoría homogeneizada dinámicamente
   const agrupados = {};
   errores.forEach(item => {
+    if (!item.errorTexto) return;
     const catInfo = categorizarErrorDashboard(item.errorTexto);
     const cat = catInfo.categoria || 'Sin clasificar';
+    if (cat === 'Sin descripción de error') return; // Descartar para evitar confusiones
     if (!agrupados[cat]) {
       agrupados[cat] = { categoria: cat, count: 0, contratistas: new Set(), ejemplos: [] };
     }
@@ -3895,8 +3984,10 @@ function renderizarTiposErrorDashboard() {
     }
   });
 
-  const lista = Object.values(agrupados).sort((a, b) => b.count - a.count);
-  const totalFoliosConError = errores.length;
+  const lista = Object.values(agrupados)
+    .filter(a => a.categoria && a.categoria !== 'Sin descripción de error' && a.count > 0)
+    .sort((a, b) => b.count - a.count);
+  const totalFoliosConError = lista.reduce((acc, it) => acc + it.count, 0);
 
   if (DOM.badgeTotalTiposError) {
     DOM.badgeTotalTiposError.textContent = `${lista.length} tipos de error`;
@@ -4138,15 +4229,19 @@ function exportarDashboardExcel() {
   // 3. Hoja: Tipos de Error (si se han analizado los Excels)
   if (appState.dashboardErroresExtraidos && appState.dashboardErroresExtraidos.length > 0) {
     const errMap = {};
+    let totalValidos = 0;
     appState.dashboardErroresExtraidos.forEach(item => {
+      if (!item.errorTexto) return;
       const catObj = categorizarErrorDashboard(item.errorTexto);
       const c = catObj.categoria || 'Sin clasificar';
+      if (c === 'Sin descripción de error') return;
       errMap[c] = (errMap[c] || 0) + 1;
+      totalValidos++;
     });
     const errFilas = Object.entries(errMap).map(([cat, cnt]) => ({
       'Categoría de Error': cat,
       'Folios Afectados': cnt,
-      'Porcentaje (%)': `${((cnt / appState.dashboardErroresExtraidos.length) * 100).toFixed(1)}%`
+      'Porcentaje (%)': totalValidos > 0 ? `${((cnt / totalValidos) * 100).toFixed(1)}%` : '0%'
     })).sort((a, b) => b['Folios Afectados'] - a['Folios Afectados']);
 
     const wsErrores = XLSX.utils.json_to_sheet(errFilas);
