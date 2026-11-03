@@ -54,6 +54,26 @@ const ANA_KAREN_CONFIG = {
   pinHash: 'a1fb4e703a9ef1fa4936801721ff285a97ac85330856674412e054892afe6972' // PIN: 2468
 };
 
+// =========================================================================
+// CORTE OFICIAL DE FASE DE PRODUCCIÓN (03 DE NOVIEMBRE DE 2026)
+// Todos los registros y pruebas anteriores al 3 de noviembre quedan ocultos
+// de la interfaz, reportes y métricas para arrancar producción en limpio.
+// =========================================================================
+const FECHA_CORTE_PRODUCCION = '2026-11-03';
+
+function esTicketDeProduccion(createdAt) {
+  if (!createdAt) return false;
+  try {
+    const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' });
+    const dateStr = formatter.format(new Date(createdAt * 1000));
+    return dateStr >= FECHA_CORTE_PRODUCCION;
+  } catch (e) {
+    const d = new Date(createdAt * 1000);
+    const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return dStr >= FECHA_CORTE_PRODUCCION;
+  }
+}
+
 async function calcularSha256(texto) {
   if (window.crypto && crypto.subtle) {
     const msgUint8 = new TextEncoder().encode(texto);
@@ -613,9 +633,15 @@ async function sincronizarTicketsYTurnos(silencioso = false) {
     }
 
     const data = await response.json();
-    const records = data.objects || [];
+    const allObjects = data.objects || [];
     
-    // Ordenar tickets generales del más reciente al más antiguo para consulta histórica
+    // Almacén crudo para auditorías técnicas
+    appState.todosLosRegistrosCrudos = allObjects;
+
+    // Regla de Producción: Ocultar todo registro anterior al 3 de noviembre de 2026
+    const records = allObjects.filter(r => esTicketDeProduccion(r.created_at));
+    
+    // Ordenar tickets de producción del más reciente al más antiguo para consulta histórica
     records.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
     appState.todosLosTickets = records;
 
@@ -1996,11 +2022,15 @@ function renderizarVistaResponsable() {
 
   if (ticketsAMostrar.length === 0) {
     DOM.ticketsContainer.innerHTML = `
-      <div class="p-12 text-center text-slate-400">
-        <i data-lucide="inbox" class="w-10 h-10 text-slate-300 mx-auto mb-2"></i>
-        <p class="text-sm font-semibold text-slate-700">No se encontraron tickets con este filtro.</p>
-        <p class="text-xs text-slate-400 mt-1">
-          ${appState.busquedaFiltro ? `No hay coincidencias para "${appState.busquedaFiltro}".` : 'Cambia de filtro o consulta el Histórico Completo.'}
+      <div class="p-12 text-center text-slate-400 space-y-2">
+        <div class="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto text-emerald-600 mb-2 shadow-2xs">
+          <i data-lucide="check-circle-2" class="w-6 h-6"></i>
+        </div>
+        <p class="text-sm font-bold text-slate-800">Fase de Producción Oficial (03 de Noviembre)</p>
+        <p class="text-xs text-slate-500 max-w-md mx-auto">
+          ${appState.busquedaFiltro 
+            ? `No hay coincidencias para "${escapeHTML(appState.busquedaFiltro)}".` 
+            : 'Los registros de prueba previos han sido ocultados. La Mesa de Control está al día y lista para recibir los folios de producción.'}
         </p>
       </div>
     `;
