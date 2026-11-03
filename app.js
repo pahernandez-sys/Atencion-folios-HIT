@@ -2089,14 +2089,25 @@ function renderizarVistaResponsable() {
             </div>
           </div>
 
-          <!-- Archivo Excel y Conteo -->
+          <!-- Archivo Excel y Conteo (Filtrado para Mesa de Control / Cristina) -->
           <div class="flex flex-wrap items-center gap-3 pt-2 text-xs">
             ${primerArchivo && primerArchivo.file_url ? `
-              <a href="${primerArchivo.file_url}" target="_blank" rel="noopener noreferrer" 
-                class="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-semibold border border-emerald-200 transition-colors">
-                <i data-lucide="download" class="w-3.5 h-3.5 text-emerald-600"></i>
-                <span class="truncate max-w-[200px]">${primerArchivo.file_name || 'Descargar Excel'}</span>
-              </a>
+              <div class="inline-flex flex-wrap items-center gap-2">
+                <button type="button" 
+                  id="btnDescargaExcel_${ticket.id}"
+                  onclick="descargarExcelMesaControl('${ticket.id}', '${primerArchivo.file_url}', '${encodeURIComponent(primerArchivo.file_name || 'Folios_HIT.xlsx')}')"
+                  class="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-semibold shadow-xs transition-colors"
+                  title="Descargar archivo Excel para Mesa de Control (se excluyen automáticamente los folios con error de PIC Móvil)">
+                  <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                  <span class="truncate max-w-[190px]">${escapeHTML(primerArchivo.file_name || 'Descargar Excel')}</span>
+                  <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] bg-emerald-800/80 text-white font-bold">Mesa de Control</span>
+                </button>
+                <a href="${primerArchivo.file_url}" target="_blank" rel="noopener noreferrer" 
+                  class="text-[11px] text-slate-400 hover:text-slate-700 underline px-1 py-1" 
+                  title="Descargar archivo original completo tal como lo subió el contratista">
+                  Original
+                </a>
+              </div>
             ` : '<span class="text-slate-400 italic text-xs">Sin archivo adjunto</span>'}
 
             <!-- Número de Folios (Automático / Editable) -->
@@ -2150,6 +2161,155 @@ function renderizarVistaResponsable() {
 
   if (window.lucide) window.lucide.createIcons();
 }
+
+/**
+ * Toast flotante para notificaciones breves en pantalla
+ */
+function mostrarNotificacionToast(mensaje, duracionMs = 4500) {
+  let toast = document.getElementById('appToastNotificacion');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'appToastNotificacion';
+    toast.className = 'fixed bottom-5 right-5 z-50 bg-slate-900/95 text-white px-4 py-3 rounded-xl shadow-2xl text-xs font-semibold flex items-center space-x-2.5 transition-all duration-300 transform translate-y-10 opacity-0 pointer-events-none border border-slate-700 max-w-md';
+    document.body.appendChild(toast);
+  }
+  toast.innerHTML = `
+    <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400 shrink-0"></i>
+    <span class="leading-snug">${escapeHTML(mensaje)}</span>
+  `;
+  if (window.lucide) window.lucide.createIcons();
+  toast.classList.remove('translate-y-10', 'opacity-0', 'pointer-events-none');
+  setTimeout(() => {
+    toast.classList.add('translate-y-10', 'opacity-0', 'pointer-events-none');
+  }, duracionMs);
+}
+
+/**
+ * Descarga el archivo Excel de un ticket para Mesa de Control (Cristina),
+ * eliminando automáticamente las filas que tengan el error de liquidación en PIC Móvil
+ * ("Verifica que tu folio sea el correcto y se encuentre liquidado completado en PIC Movil"),
+ * ya que esos folios son atendidos por Karen en el panel de Revisión TAC.
+ */
+async function descargarExcelMesaControl(ticketId, fileUrl, rawFileName) {
+  if (!fileUrl) {
+    alert('No hay archivo Excel disponible para descargar.');
+    return;
+  }
+
+  const fileName = decodeURIComponent(rawFileName || 'Folios_HIT.xlsx');
+  const btn = document.getElementById(`btnDescargaExcel_${ticketId}`);
+  let htmlOriginal = '';
+  if (btn) {
+    htmlOriginal = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `
+      <span class="inline-block animate-spin w-3 h-3 border-2 border-white border-t-transparent rounded-full mr-1"></span>
+      <span>Filtrando folios...</span>
+    `;
+  }
+
+  try {
+    const res = await fetch(fileUrl);
+    if (!res.ok) {
+      throw new Error(`Error HTTP al obtener archivo (${res.status})`);
+    }
+
+    const arrayBuf = await res.arrayBuffer();
+    const wb = XLSX.read(new Uint8Array(arrayBuf), { type: 'array' });
+    const sheetName = wb.SheetNames[0] || 'Hoja1';
+    const sheet = wb.Sheets[sheetName];
+    const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+
+    if (!rawRows || rawRows.length < 2) {
+      const originalWb = XLSX.read(new Uint8Array(arrayBuf), { type: 'array' });
+      XLSX.writeFile(originalWb, fileName);
+      return;
+    }
+
+    const headerRow = rawRows[0] || [];
+    let colFolio = -1;
+    let colError = -1;
+
+    headerRow.forEach((col, idx) => {
+      const colName = String(col || '').toLowerCase().trim();
+      if (colName.includes('folio') && colFolio === -1) colFolio = idx;
+      if ((colName.includes('error') || colName.includes('estatus') || colName.includes('observaci') || colName.includes('detalle') || colName.includes('motivo')) && colError === -1) {
+        colError = idx;
+      }
+    });
+
+    if (colFolio === -1) colFolio = 0;
+    if (colError === -1) colError = headerRow.length - 1;
+
+    const filasFiltradas = [headerRow];
+    let foliosEliminadosPicMovil = 0;
+
+    for (let r = 1; r < rawRows.length; r++) {
+      const row = rawRows[r];
+      if (!row || !row.length) continue;
+
+      const valErrorCol = colError >= 0 ? String(row[colError] !== undefined ? row[colError] : '').trim() : '';
+      const tieneErrorPicMovil = esErrorExclusivoAnaKaren(valErrorCol) || row.some(cell => esErrorExclusivoAnaKaren(String(cell || '').trim()));
+
+      if (tieneErrorPicMovil) {
+        foliosEliminadosPicMovil++;
+        continue; // Excluir este folio del Excel de Cristina (atendido por Karen)
+      }
+
+      filasFiltradas.push(row);
+    }
+
+    // Caso: Todos los folios eran de PIC Móvil
+    if (filasFiltradas.length <= 1) {
+      alert(`Aviso para Mesa de Control (Cristina):\n\nTodos los folios de este archivo (${foliosEliminadosPicMovil} folios) corresponden al error:\n"Verifica que tu folio sea el correcto y se encuentre liquidado completado en PIC Movil".\n\nEstos folios son atendidos exclusivamente por Karen en el panel de Revisión TAC.\n\nNo hay folios pendientes que atender en Mesa de Control para este ticket.`);
+      
+      const inpFolioElem = document.getElementById(`inputFolios_${ticketId}`);
+      if (inpFolioElem && !inpFolioElem.disabled) {
+        inpFolioElem.value = 0;
+        if (!borradorRespuestas[ticketId]) borradorRespuestas[ticketId] = {};
+        borradorRespuestas[ticketId].folios = 0;
+      }
+      return;
+    }
+
+    // Crear libro nuevo con las filas filtradas
+    const newWs = XLSX.utils.aoa_to_sheet(filasFiltradas);
+    const newWb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(newWb, newWs, sheetName);
+
+    const baseName = fileName.replace(/\.(xlsx|xls)$/i, '');
+    const nombreDescarga = `${baseName}_MesaControl.xlsx`;
+    XLSX.writeFile(newWb, nombreDescarga);
+
+    // Actualizar automáticamente el input de folios en la tarjeta de Cristina
+    const foliosRestantes = filasFiltradas.length - 1;
+    const inpFolioElem = document.getElementById(`inputFolios_${ticketId}`);
+    if (inpFolioElem && !inpFolioElem.disabled) {
+      inpFolioElem.value = foliosRestantes;
+      if (!borradorRespuestas[ticketId]) borradorRespuestas[ticketId] = {};
+      borradorRespuestas[ticketId].folios = foliosRestantes;
+    }
+
+    if (foliosEliminadosPicMovil > 0) {
+      mostrarNotificacionToast(`Excel descargado con ${foliosRestantes} folios para Mesa de Control. Se excluyeron ${foliosEliminadosPicMovil} folios de PIC Móvil para Karen.`);
+    } else {
+      mostrarNotificacionToast(`Excel descargado con ${foliosRestantes} folios para Mesa de Control.`);
+    }
+
+  } catch (err) {
+    console.error('Error al descargar y filtrar Excel para Mesa de Control:', err);
+    alert('Ocurrió un problema al procesar el archivo. Se abrirá el archivo original directamente.');
+    window.open(fileUrl, '_blank');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = htmlOriginal;
+      if (window.lucide) window.lucide.createIcons();
+    }
+  }
+}
+
+window.descargarExcelMesaControl = descargarExcelMesaControl;
 
 /**
  * Función ejecutada cuando la Responsable hace clic en "Finalizar y Notificar"
@@ -2284,6 +2444,18 @@ function guardarEnCacheArchivos(url, items) {
 // Almacén persistente de folios revisados / atendidos por Ana Karen
 const STORAGE_KEY_REVISADOS_ANA_KAREN = 'ana_karen_revisados_v1';
 
+// Constante oficial: Inicio de atención de Karen (Revisión TAC)
+// 29 de octubre de 2026, 17:00 hrs (Hora local México / UTC-6)
+const CORTE_KAREN_TIMESTAMP_SEGUNDOS = 1793314800;
+
+function esTicketDesdeInicioKaren(ticket) {
+  if (!ticket || !ticket.created_at) return false;
+  let seg = Number(ticket.created_at);
+  if (isNaN(seg)) return false;
+  if (seg > 1e11) seg = Math.floor(seg / 1000);
+  return seg >= CORTE_KAREN_TIMESTAMP_SEGUNDOS;
+}
+
 function obtenerRevisadosAnaKaren() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_REVISADOS_ANA_KAREN);
@@ -2358,8 +2530,15 @@ async function cargarErroresAnaKaren(forzar = false, silencioso = false) {
     const tickets = appState.todosLosTickets || [];
     
     // Recopilar todos los archivos Excel adjuntos con su metadata
+    // REGLA OFICIAL: Karen atiende a partir del 29 de octubre de 2026 a las 5:00 PM (17:00 hrs)
+    // Todo lo que llegue después de esa fecha aparecerá en el panel de Karen.
     const archivosPendientes = [];
     tickets.forEach(ticket => {
+      // Filtrar tickets por fecha de corte (29/Oct/2026, 17:00 hrs)
+      if (!esTicketDesdeInicioKaren(ticket)) {
+        return;
+      }
+
       const answers = ticket.answers || {};
       const excelFiles = answers[LINKAFORM_CONFIG.fieldIds.excel] || [];
       const contratista = answers[LINKAFORM_CONFIG.fieldIds.nombre] || '';
