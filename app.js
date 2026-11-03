@@ -3413,37 +3413,108 @@ function actualizarEstilosFiltrosPeriodoDashboard() {
 }
 
 /**
- * Categoriza cualquier texto de error encontrado en el Excel en familias operativas limpias
+ * Normaliza dinámicamente cualquier texto de error eliminando números de folio, teléfonos,
+ * cuentas e IDs específicos para agrupar errores idénticos que sólo difieren en el número de folio.
+ */
+function normalizarErrorDinamico(texto) {
+  if (!texto) return 'Sin descripción de error';
+  
+  let txt = String(texto).trim();
+  
+  // 1. Homogeneizar prefijos como (HIT), [HIT], HIT -
+  txt = txt.replace(/^[(\[]\s*hit\s*[)\]]\s*[:\-]?\s*/i, '[HIT] ');
+  txt = txt.replace(/^hit\s*[:\-]\s*/i, '[HIT] ');
+  
+  // 2. Reemplazar menciones explícitas de teléfono
+  txt = txt.replace(/(tel[eé]fono|celular|tel|movil|móvil)\s*[:#]?\s*\d{7,12}\b/gi, '$1 [TELÉFONO]');
+  
+  // 3. Reemplazar "folio XXXXX"
+  txt = txt.replace(/(folio)\s*[:#]?\s*[a-zA-Z0-9_-]{4,}/gi, '$1 [FOLIO]');
+  
+  // 4. Reemplazar "orden XXXXX", "cuenta XXXXX", "cliente XXXXX", "cope XXXXX"
+  txt = txt.replace(/(orden|cuenta|cliente|contrato|cope)\s*[:#]?\s*[a-zA-Z0-9_-]{4,}/gi, '$1 [ID]');
+  
+  // 5. Reemplazar cualquier número suelto de 4 o más dígitos (folios, series numéricas)
+  txt = txt.replace(/\b\d{4,}\b/g, '[FOLIO]');
+  
+  // 6. Limpieza de espacios múltiples y signos repetidos
+  txt = txt.replace(/\s+/g, ' ').trim();
+  
+  // 7. Capitalizar texto resultante
+  if (txt && !txt.startsWith('[')) {
+    txt = txt.charAt(0).toUpperCase() + txt.slice(1);
+  } else if (txt.startsWith('[HIT] ') && txt.length > 6) {
+    txt = '[HIT] ' + txt.charAt(6).toUpperCase() + txt.slice(7);
+  }
+  
+  return txt;
+}
+
+/**
+ * Categoriza y agrupa cualquier texto de error encontrado en los Excel en familias operativas limpias,
+ * agrupando incidencias que corresponden al mismo error aunque tengan folios o IDs distintos.
  */
 function categorizarErrorDashboard(errorTexto) {
-  const txt = String(errorTexto || '').toLowerCase().trim();
-  if (!txt) return { categoria: 'Sin descripción de error', clave: 'sin_error' };
+  const txtRaw = String(errorTexto || '').trim();
+  if (!txtRaw) return { categoria: 'Sin descripción de error', clave: 'sin_error' };
 
-  if (txt.includes('más de un registro') || txt.includes('mas de un registro')) {
+  const txt = txtRaw.toLowerCase();
+
+  // 1. Duplicidad en base HIT
+  if (txt.includes('más de un registro') || txt.includes('mas de un registro') || txt.includes('se encontró más de un') || txt.includes('se encontro mas de un')) {
     return { categoria: 'Duplicidad en HIT (Múltiples registros)', clave: 'duplicidad_hit' };
   }
-  if (txt.includes('liquidado') || txt.includes('pic movil') || txt.includes('pic móvil')) {
+
+  // 2. Folio era incorrecto y ha sido modificado / corregido (Ejemplo del usuario)
+  if (txt.includes('era incorrecto') && (txt.includes('modificado') || txt.includes('corregido') || txt.includes('cambiado'))) {
+    return { categoria: '[HIT] Folio era incorrecto y ha sido modificado', clave: 'folio_modificado' };
+  }
+
+  // 3. Liquidación en PIC Móvil (Módulo de Karen)
+  if ((txt.includes('pic movil') || txt.includes('pic móvil') || txt.includes('liquidado')) && (txt.includes('completado') || txt.includes('liquidado') || txt.includes('correcto'))) {
     return { categoria: 'Falta liquidación en PIC Móvil', clave: 'pic_movil' };
   }
-  if (txt.includes('pdf') || txt.includes('documento')) {
+
+  // 4. Falta documento PDF
+  if (txt.includes('pdf') || txt.includes('no trae su documento') || (txt.includes('documento') && (txt.includes('falta') || txt.includes('sin')))) {
     return { categoria: 'Falta documento PDF', clave: 'falta_pdf' };
   }
-  if (txt.includes('cope') || txt.includes('catalogo') || txt.includes('catálogo')) {
+
+  // 5. Cope no encontrado en catálogo
+  if (txt.includes('cope') && (txt.includes('catalogo') || txt.includes('catálogo') || txt.includes('no encontrado') || txt.includes('invalido') || txt.includes('inválido'))) {
     return { categoria: 'Cope no encontrado en catálogo', clave: 'cope_catalogo' };
   }
-  if (txt.includes('no se encontró registro') || txt.includes('no se encontro registro')) {
+
+  // 6. Sin registro en base HIT / No encontrado
+  if (txt.includes('no se encontró registro') || txt.includes('no se encontro registro') || txt.includes('no se encuentra en hit') || txt.includes('no existe en hit') || txt.includes('no registrado en hit')) {
     return { categoria: 'Sin registro en base HIT', clave: 'sin_registro_hit' };
   }
-  if (txt.includes('tecnología') || txt.includes('tecnologia')) {
-    return { categoria: 'Tecnología diferente', clave: 'tecnologia_diferente' };
-  }
-  if (txt.includes('teléfono') || txt.includes('telefono') || txt.includes('no coincide')) {
+
+  // 7. Teléfono no coincide con folio
+  if ((txt.includes('teléfono') || txt.includes('telefono')) && (txt.includes('no coincide') || txt.includes('diferente') || txt.includes('distinto'))) {
     return { categoria: 'Teléfono no coincide con folio', clave: 'telefono_no_coincide' };
   }
-  if (txt.includes('estatus') || txt.includes('estado')) {
-    return { categoria: 'Estatus o estado inválido', clave: 'estatus_invalido' };
+
+  // 8. Tecnología diferente / no compatible
+  if (txt.includes('tecnología') || txt.includes('tecnologia')) {
+    return { categoria: 'Tecnología diferente / no compatible', clave: 'tecnologia_diferente' };
   }
-  return { categoria: errorTexto.length > 55 ? errorTexto.slice(0, 52) + '...' : errorTexto, clave: 'otro' };
+
+  // 9. Estatus o estado inválido
+  if (txt.includes('estatus') || txt.includes('estado')) {
+    if (txt.includes('invalido') || txt.includes('inválido') || txt.includes('cancelado') || txt.includes('no permitido')) {
+      return { categoria: 'Estatus o estado inválido', clave: 'estatus_invalido' };
+    }
+  }
+
+  // 10. Agrupación dinámica inteligente para cualquier otro error:
+  // Reemplaza números de folio, teléfonos, cuentas o códigos por [FOLIO]/[ID]
+  // para que folios distintos con la misma plantilla de error se sumen como un solo tipo.
+  const norm = normalizarErrorDinamico(txtRaw);
+  return {
+    categoria: norm,
+    clave: 'dinamico'
+  };
 }
 
 /**
@@ -3809,10 +3880,11 @@ function renderizarTiposErrorDashboard() {
     return;
   }
 
-  // Agrupar por categoría
+  // Agrupar por categoría homogeneizada dinámicamente
   const agrupados = {};
   errores.forEach(item => {
-    const cat = item.categoria || 'Sin clasificar';
+    const catInfo = categorizarErrorDashboard(item.errorTexto);
+    const cat = catInfo.categoria || 'Sin clasificar';
     if (!agrupados[cat]) {
       agrupados[cat] = { categoria: cat, count: 0, contratistas: new Set(), ejemplos: [] };
     }
@@ -3854,6 +3926,13 @@ function renderizarTiposErrorDashboard() {
             <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
               <div class="${colColor} h-2 rounded-full transition-all duration-500" style="width: ${pct}%"></div>
             </div>
+
+            ${item.ejemplos && item.ejemplos.length > 0 ? `
+              <div class="text-[10px] text-slate-500 font-mono bg-slate-50 p-1.5 rounded-lg border border-slate-200/80 truncate" title="${escapeHTML(item.ejemplos[0])}">
+                <span class="text-slate-400 font-semibold block uppercase text-[9px]">Ejemplo detectado en Excel:</span>
+                <span class="truncate block">${escapeHTML(item.ejemplos[0])}</span>
+              </div>
+            ` : ''}
 
             <div class="flex items-center justify-between text-[11px] text-slate-400 pt-1">
               <span>Presente en ${item.contratistas.size} contratistas</span>
@@ -4060,7 +4139,8 @@ function exportarDashboardExcel() {
   if (appState.dashboardErroresExtraidos && appState.dashboardErroresExtraidos.length > 0) {
     const errMap = {};
     appState.dashboardErroresExtraidos.forEach(item => {
-      const c = item.categoria || 'Sin clasificar';
+      const catObj = categorizarErrorDashboard(item.errorTexto);
+      const c = catObj.categoria || 'Sin clasificar';
       errMap[c] = (errMap[c] || 0) + 1;
     });
     const errFilas = Object.entries(errMap).map(([cat, cnt]) => ({
