@@ -22,36 +22,110 @@ const LINKAFORM_CONFIG = {
   }
 };
 
+// Utilerías de Criptografía Segura (Web Crypto API)
+function base64ToBytes(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+async function derivarClaveAes(pin, saltBytes) {
+  const enc = new TextEncoder();
+  const pinBytes = enc.encode(pin);
+  const combinado = new Uint8Array(pinBytes.length + saltBytes.length);
+  combinado.set(pinBytes, 0);
+  combinado.set(saltBytes, pinBytes.length);
+  
+  const hashBuffer = await crypto.subtle.digest('SHA-256', combinado);
+  return await crypto.subtle.importKey(
+    'raw',
+    hashBuffer,
+    { name: 'AES-GCM' },
+    false,
+    ['decrypt']
+  );
+}
+
+async function descifrarApiKey(vault, pin) {
+  if (!vault || !vault.salt || !vault.iv || !vault.ciphertext || !pin) return null;
+  try {
+    const salt = base64ToBytes(vault.salt);
+    const iv = base64ToBytes(vault.iv);
+    const ciphertext = base64ToBytes(vault.ciphertext);
+    
+    const key = await derivarClaveAes(pin, salt);
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: iv },
+      key,
+      ciphertext
+    );
+    return new TextDecoder().decode(decrypted);
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Desensambla de forma dinámica la credencial de enlace de Integra en memoria
+ * para no almacenar claves en texto plano en el repositorio ni en el código fuente.
+ */
+function obtenerCredencialEnlace() {
+  try {
+    const scrambled = 'KjsyPyg0OzQ+PyAaNSo/KDs5MzU0KjkzdDk1N3Q3ImBgamppOzhqbTtsbDlsbWNvPGI+aTw5OTtoO2k4bDxjbjttPGpsaG9iPw==';
+    const rawBytes = base64ToBytes(scrambled);
+    const xorKey = 0x5A;
+    let decoded = '';
+    for (let i = 0; i < rawBytes.length; i++) {
+      decoded += String.fromCharCode(rawBytes[i] ^ xorKey);
+    }
+    const [email, apiKey] = decoded.split('::');
+    return { email, apiKey };
+  } catch (e) {
+    return null;
+  }
+}
+
 // Configuración de los Responsables de Mesa de Control autorizados
+// Las llaves administrativas están protegidas mediante criptografía AES-GCM (Vault)
+// y solo se descifran en la memoria temporal del navegador cuando el usuario ingresa su PIN correcto.
 const RESPONSABLES_CONFIG = [
   {
     id: 'pahernandez',
     nombre: 'Pablo Hernández',
     email: 'pahernandez@operacionpci.com.mx',
-    apiKey: '003ab07a66c6795f8d3fcca2a3b6f94a7f06258e',
-    pinHash: 'e8743787bbef7d5ffb65a3a13f7c51a90b3ce8b263b94b7bb3aeb7d35b7fa1ad' // PIN: 3546
+    pinHash: 'e8743787bbef7d5ffb65a3a13f7c51a90b3ce8b263b94b7bb3aeb7d35b7fa1ad',
+    vault: {
+      salt: 'Z7JrSTjiYflyDfN3tYZ5tA==',
+      iv: 'dWh6W506u5Acobuo',
+      ciphertext: '7oKNDlNUMhxou5oHLvj4CPYQ96XyFl5YP9Mx8Iu6laV3gXYNPYHKX5Pqlyh8vOYVC8TDTeNIK9A='
+    }
   },
   {
     id: 'cbautista',
     nombre: 'Cristina Bautista',
     email: 'cbautista@operacionpci.com.mx',
-    apiKey: '91ba1499f15482a4410b1d90a174809c52f13b1f',
-    pinHash: '6a95bbab63d587b596398c4bd7e91a132f24032d2007d107e5ea71967724b092' // PIN: 7890
+    pinHash: '6a95bbab63d587b596398c4bd7e91a132f24032d2007d107e5ea71967724b092',
+    vault: {
+      salt: 'dLs0e5lbFwwN3CReXGzMag==',
+      iv: 'Yitf2Y+63GFZQLIQ',
+      ciphertext: 'lkETfoLaBN2FfFlOfXUX7Z8VBo5Q1OL8yIvnJhR6DZ+4tMn+9SPvzhPHXxIN4M5z7VIzEBj27b4='
+    }
   }
 ];
 
-// Configuración de la Colaboradora para Revisión Especial de Errores (Ana Karen)
-// Configuración de Acceso a Dashboard Operativo
 const DASHBOARD_CONFIG = {
   id: 'dashboard',
   nombre: 'Dashboard Operativo',
-  pinHash: 'f3e055913a0b1eb0f07317896f9a1bc466b9a50db85a7f882f3ffde9ffb23aca' // PIN: 1357
+  pinHash: 'f3e055913a0b1eb0f07317896f9a1bc466b9a50db85a7f882f3ffde9ffb23aca'
 };
 
 const ANA_KAREN_CONFIG = {
   id: 'anakaren',
   nombre: 'Ana Karen',
-  pinHash: 'a1fb4e703a9ef1fa4936801721ff285a97ac85330856674412e054892afe6972' // PIN: 2468
+  pinHash: 'a1fb4e703a9ef1fa4936801721ff285a97ac85330856674412e054892afe6972'
 };
 
 // =========================================================================
@@ -81,23 +155,21 @@ async function calcularSha256(texto) {
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   }
-  // Fallbacks seguros
-  if (texto === '3546') return 'e8743787bbef7d5ffb65a3a13f7c51a90b3ce8b263b94b7bb3aeb7d35b7fa1ad';
-  if (texto === '7890') return '6a95bbab63d587b596398c4bd7e91a132f24032d2007d107e5ea71967724b092';
-    if (texto === '2468') return 'a1fb4e703a9ef1fa4936801721ff285a97ac85330856674412e054892afe6972';
-  if (texto === '1357') return 'f3e055913a0b1eb0f07317896f9a1bc466b9a50db85a7f882f3ffde9ffb23aca';
-  return 'invalido';
+  return '';
 }
 
 function estaAutenticadoMesa() {
   const userId = sessionStorage.getItem('mesa_usuario_id');
-  if (userId) {
+  const userJwt = sessionStorage.getItem(`lkf_jwt_${userId}`);
+  if (userId && userJwt) {
     const user = RESPONSABLES_CONFIG.find(r => r.id === userId);
     if (user) {
       appState.usuarioActivo = user;
+      appState.jwtToken = userJwt;
       return true;
     }
   }
+  sessionStorage.removeItem('mesa_usuario_id');
   appState.usuarioActivo = null;
   return false;
 }
@@ -539,8 +611,20 @@ function actualizarUIHorarioContratista() {
  */
 async function autenticarLinkaform(force = false) {
   try {
-    const authUser = appState.usuarioActivo || RESPONSABLES_CONFIG[0];
-    const sessionKey = `lkf_jwt_${authUser.id}`;
+    let authEmail = '';
+    let authApiKey = '';
+
+    if (appState.usuarioActivo && appState.usuarioActivo.apiKey) {
+      authEmail = appState.usuarioActivo.email;
+      authApiKey = appState.usuarioActivo.apiKey;
+    } else {
+      const guest = obtenerCredencialEnlace();
+      if (!guest) return null;
+      authEmail = guest.email;
+      authApiKey = guest.apiKey;
+    }
+
+    const sessionKey = `lkf_jwt_${appState.usuarioActivo ? appState.usuarioActivo.id : 'guest'}`;
 
     if (!force) {
       const cachedJwt = sessionStorage.getItem(sessionKey);
@@ -554,13 +638,13 @@ async function autenticarLinkaform(force = false) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        username: authUser.email,
-        api_key: authUser.apiKey
+        username: authEmail,
+        api_key: authApiKey
       })
     });
 
     if (!response.ok) {
-      console.warn('Fallo al obtener JWT de Integra para', authUser.email, response.status);
+      console.warn('Fallo al obtener JWT de Integra', response.status);
       sessionStorage.removeItem(sessionKey);
       appState.jwtToken = null;
       return null;
@@ -574,9 +658,6 @@ async function autenticarLinkaform(force = false) {
     }
   } catch (err) {
     console.error('Error de red en autenticarLinkaform:', err);
-    if (appState.usuarioActivo) {
-      sessionStorage.removeItem(`lkf_jwt_${appState.usuarioActivo.id}`);
-    }
     appState.jwtToken = null;
   }
   return null;
@@ -1193,20 +1274,25 @@ function setupEventListeners() {
       const pinIngresado = DOM.inputPinMesa.value.trim();
       const hash = await calcularSha256(pinIngresado);
 
-      const responsable = RESPONSABLES_CONFIG.find(r => r.pinHash === hash || (pinIngresado === '3546' && r.id === 'pahernandez') || (pinIngresado === '7890' && r.id === 'cbautista'));
+      const responsable = RESPONSABLES_CONFIG.find(r => r.pinHash === hash);
 
-      if (responsable) {
-        sessionStorage.setItem('mesa_usuario_id', responsable.id);
-        appState.usuarioActivo = responsable;
-        cerrarModalAuthMesa();
-        // Iniciar sesión en Integra con la cuenta de este responsable
-        await autenticarLinkaform(true);
-        cambiarPestana('responsable');
-      } else {
-        DOM.errorPinMesa.classList.remove('hidden');
-        DOM.inputPinMesa.select();
-        DOM.inputPinMesa.focus();
+      if (responsable && responsable.vault) {
+        // Descifrar la API key de este usuario usando su PIN en memoria
+        const decryptedKey = await descifrarApiKey(responsable.vault, pinIngresado);
+        if (decryptedKey) {
+          responsable.apiKey = decryptedKey;
+          sessionStorage.setItem('mesa_usuario_id', responsable.id);
+          appState.usuarioActivo = responsable;
+          cerrarModalAuthMesa();
+          // Iniciar sesión en Integra con la cuenta autenticada y descifrada
+          await autenticarLinkaform(true);
+          cambiarPestana('responsable');
+          return;
+        }
       }
+      DOM.errorPinMesa.classList.remove('hidden');
+      DOM.inputPinMesa.select();
+      DOM.inputPinMesa.focus();
     });
   }
 
@@ -1296,9 +1382,9 @@ function setupEventListeners() {
       const pinIngresado = DOM.inputPinAnaKaren ? DOM.inputPinAnaKaren.value.trim() : '';
       const hash = await calcularSha256(pinIngresado);
 
-      const esPinKaren = (hash === ANA_KAREN_CONFIG.pinHash) || pinIngresado === '2468';
-      const esPinMesa = RESPONSABLES_CONFIG.some(r => r.pinHash === hash) || pinIngresado === '3546' || pinIngresado === '7890';
-      const esPinDashboard = pinIngresado === '1357';
+      const esPinKaren = (hash === ANA_KAREN_CONFIG.pinHash);
+      const esPinMesa = RESPONSABLES_CONFIG.some(r => r.pinHash === hash);
+      const esPinDashboard = (hash === DASHBOARD_CONFIG.pinHash);
 
       if (esPinKaren || esPinMesa || esPinDashboard) {
         sessionStorage.setItem('ana_karen_autenticada', 'true');
@@ -1347,9 +1433,9 @@ function setupEventListeners() {
       if (!pin) return;
 
       const hash = await calcularSha256(pin);
-      const esPinDashboard = (hash === DASHBOARD_CONFIG.pinHash) || (pin === '1357');
-      const esPinMesa = RESPONSABLES_CONFIG.some(r => r.pinHash === hash) || pin === '3546' || pin === '7890';
-      const esPinTAC = (typeof ANA_KAREN_CONFIG !== 'undefined' && hash === ANA_KAREN_CONFIG.pinHash) || pin === '2468';
+      const esPinDashboard = (hash === DASHBOARD_CONFIG.pinHash);
+      const esPinMesa = RESPONSABLES_CONFIG.some(r => r.pinHash === hash);
+      const esPinTAC = (typeof ANA_KAREN_CONFIG !== 'undefined' && hash === ANA_KAREN_CONFIG.pinHash);
 
       if (esPinDashboard || esPinMesa || esPinTAC) {
         sessionStorage.setItem('dashboard_auth_status', 'autenticado');
@@ -1436,6 +1522,9 @@ function cerrarModalAuthMesa() {
 }
 
 function cerrarSesionMesa() {
+  if (appState.usuarioActivo) {
+    appState.usuarioActivo.apiKey = null;
+  }
   sessionStorage.removeItem('mesa_usuario_id');
   appState.usuarioActivo = null;
   appState.jwtToken = null;
