@@ -566,22 +566,22 @@
         <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
           <span class="text-xs text-slate-500 font-semibold block uppercase">Total Errores PIC Móvil</span>
           <span id="metricAnaKarenTotal" class="text-2xl font-black text-slate-800">0</span>
-          <span class="text-[10px] text-slate-400 block mt-0.5">Filas con esta incidencia</span>
+          <span id="subtextAnaKarenTotal" class="text-[10px] text-slate-400 block mt-0.5">0 solicitudes</span>
         </div>
         <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
           <span class="text-xs text-amber-700 font-semibold block uppercase">Pendientes de Revisión</span>
           <span id="metricAnaKarenPendientes" class="text-2xl font-black text-amber-600">0</span>
-          <span class="text-[10px] text-amber-600/80 block mt-0.5">Por regularizar en PIC Móvil</span>
+          <span id="subtextAnaKarenPendientes" class="text-[10px] text-amber-600/80 block mt-0.5">0 solicitudes pendientes</span>
         </div>
         <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
           <span class="text-xs text-emerald-700 font-semibold block uppercase">Revisados / Atendidos</span>
           <span id="metricAnaKarenRevisados" class="text-2xl font-black text-emerald-600">0</span>
-          <span class="text-[10px] text-emerald-600/80 block mt-0.5">Marcados como atendidos</span>
+          <span id="subtextAnaKarenRevisados" class="text-[10px] text-emerald-600/80 block mt-0.5">0 solicitudes atendidas</span>
         </div>
         <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-          <span class="text-xs text-purple-700 font-semibold block uppercase">Archivos con este Error</span>
+          <span class="text-xs text-purple-700 font-semibold block uppercase">Solicitudes / Turnos</span>
           <span id="metricAnaKarenArchivos" class="text-2xl font-black text-purple-700">0</span>
-          <span class="text-[10px] text-slate-400 block mt-0.5">Tickets que contienen la falla</span>
+          <span id="subtextAnaKarenArchivos" class="text-[10px] text-slate-400 block mt-0.5">Con errores de PIC Móvil</span>
         </div>
       </div>
 
@@ -591,7 +591,7 @@
           
           <div class="flex items-center space-x-2">
             <i data-lucide="layers" class="w-4 h-4 text-purple-600"></i>
-            <h3 class="text-sm font-bold text-slate-900">Listado de Errores en PIC Móvil</h3>
+            <h3 class="text-sm font-bold text-slate-900">Solicitudes Agrupadas por Turno</h3>
             <span id="badgeAnaKarenMostrados" class="text-xs font-mono font-bold bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full">0</span>
           </div>
 
@@ -1061,6 +1061,6 @@
     <p>Operación PCI • Mesa de Validacion HIT • Conexión Integra API</p>
   </footer>
 
-  <script src="app.js?v=24"></script>
+  <script src="app.js?v=25"></script>
 </body>
 </html>

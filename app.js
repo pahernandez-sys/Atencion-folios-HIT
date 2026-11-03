@@ -2739,7 +2739,7 @@ async function cargarErroresAnaKaren(forzar = false, silencioso = false) {
 /**
  * Actualiza los estilos visuales y contadores de los botones de filtro de Ana Karen
  */
-function actualizarEstilosFiltrosAnaKaren() {
+function actualizarEstilosFiltrosAnaKaren(solicitudesPendientes, solicitudesAtendidas, totalSolicitudes) {
   const activoClass = 'px-2.5 py-1 rounded-lg font-semibold bg-white text-purple-700 shadow-xs transition-colors';
   const inactivoClass = 'px-2.5 py-1 rounded-lg font-semibold text-slate-600 hover:text-slate-900 transition-colors';
 
@@ -2748,22 +2748,26 @@ function actualizarEstilosFiltrosAnaKaren() {
   const atendidosCount = items.filter(it => !!revisados[it.id]?.revisado).length;
   const pendientesCount = items.length - atendidosCount;
 
+  const pendTexto = solicitudesPendientes !== undefined ? solicitudesPendientes : pendientesCount;
+  const revTexto = solicitudesAtendidas !== undefined ? solicitudesAtendidas : atendidosCount;
+  const totalTexto = totalSolicitudes !== undefined ? totalSolicitudes : items.length;
+
   if (DOM.filtroAnaKarenPendientes) {
     DOM.filtroAnaKarenPendientes.className = appState.anaKarenFiltroEstatus === 'pendientes' ? activoClass : inactivoClass;
-    DOM.filtroAnaKarenPendientes.innerHTML = `Pendientes <span class="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-amber-100 text-amber-800 font-bold">${pendientesCount}</span>`;
+    DOM.filtroAnaKarenPendientes.innerHTML = `Pendientes <span class="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-amber-100 text-amber-800 font-bold">${pendTexto}</span>`;
   }
   if (DOM.filtroAnaKarenRevisados) {
     DOM.filtroAnaKarenRevisados.className = appState.anaKarenFiltroEstatus === 'revisados' ? activoClass : inactivoClass;
-    DOM.filtroAnaKarenRevisados.innerHTML = `Atendidos <span class="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-100 text-emerald-800 font-bold">${atendidosCount}</span>`;
+    DOM.filtroAnaKarenRevisados.innerHTML = `Atendidos <span class="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-100 text-emerald-800 font-bold">${revTexto}</span>`;
   }
   if (DOM.filtroAnaKarenTodos) {
     DOM.filtroAnaKarenTodos.className = appState.anaKarenFiltroEstatus === 'todos' ? activoClass : inactivoClass;
-    DOM.filtroAnaKarenTodos.innerHTML = `Todos <span class="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-purple-100 text-purple-800 font-bold">${items.length}</span>`;
+    DOM.filtroAnaKarenTodos.innerHTML = `Todos <span class="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-purple-100 text-purple-800 font-bold">${totalTexto}</span>`;
   }
 }
 
 /**
- * Renderiza la lista consolidada de errores filtrada en tiempo real
+ * Renderiza las solicitudes y turnos agrupados con errores de PIC Móvil para Revisión TAC
  */
 function renderizarErroresAnaKaren() {
   if (!DOM.contenedorErroresAnaKaren) return;
@@ -2771,54 +2775,137 @@ function renderizarErroresAnaKaren() {
   const revisados = obtenerRevisadosAnaKaren();
   const todos = appState.anaKarenItems || [];
 
-  // Calcular métricas
-  const total = todos.length;
-  const atendidosCount = todos.filter(it => !!revisados[it.id]?.revisado).length;
-  const pendientesCount = total - atendidosCount;
+  // Mapear tickets para obtener turno y metadata completa
+  const ticketsMap = {};
+  (appState.todosLosTickets || []).forEach(t => {
+    ticketsMap[t.id] = t;
+  });
 
-  if (DOM.metricAnaKarenTotal) DOM.metricAnaKarenTotal.textContent = total;
-  if (DOM.metricAnaKarenPendientes) DOM.metricAnaKarenPendientes.textContent = pendientesCount;
-  if (DOM.metricAnaKarenRevisados) DOM.metricAnaKarenRevisados.textContent = atendidosCount;
+  // Agrupar items por Ticket / Solicitud
+  const gruposMap = {};
+  todos.forEach(item => {
+    const tId = item.ticketId;
+    if (!gruposMap[tId]) {
+      const ticketObj = ticketsMap[tId] || {
+        id: tId,
+        folio: item.ticketFolio,
+        created_at: item.ticketCreatedAt,
+        answers: {
+          [LINKAFORM_CONFIG.fieldIds.nombre]: item.contratistaNombre,
+          [LINKAFORM_CONFIG.fieldIds.telefono]: item.contratistaTelefono,
+          [LINKAFORM_CONFIG.fieldIds.email]: item.contratistaEmail
+        }
+      };
+
+      // Formatear fecha y turno
+      let fechaTexto = '--';
+      if (item.ticketCreatedAt) {
+        const d = new Date(item.ticketCreatedAt > 1e11 ? item.ticketCreatedAt : item.ticketCreatedAt * 1000);
+        fechaTexto = d.toLocaleDateString('es-MX', {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+        fechaTexto = fechaTexto.charAt(0).toUpperCase() + fechaTexto.slice(1);
+      }
+
+      const esDeHoy = typeof ticketObj.turnoDia === 'number';
+      const turnoBadge = esDeHoy ? `TURNO #${ticketObj.turnoDia} (HOY)` : 'HISTÓRICO';
+
+      gruposMap[tId] = {
+        ticketId: tId,
+        ticket: ticketObj,
+        contratista: item.contratistaNombre || 'Sin nombre',
+        telefono: item.contratistaTelefono || '',
+        email: item.contratistaEmail || '',
+        archivoNombre: item.archivoNombre || 'Archivo.xlsx',
+        archivoUrl: item.archivoUrl,
+        ticketFolio: item.ticketFolio,
+        ticketCreatedAt: item.ticketCreatedAt,
+        fechaTexto,
+        esDeHoy,
+        turnoBadge,
+        items: []
+      };
+    }
+    gruposMap[tId].items.push(item);
+  });
+
+  // Convertir a lista ordenada (los de hoy primero y por turno, luego los más recientes)
+  const listaGrupos = Object.values(gruposMap);
+  listaGrupos.sort((a, b) => {
+    // Si ambos son de hoy y tienen número de turno, ordenar por turno secuencial
+    if (a.esDeHoy && b.esDeHoy && typeof a.ticket.turnoDia === 'number' && typeof b.ticket.turnoDia === 'number') {
+      return a.ticket.turnoDia - b.ticket.turnoDia;
+    }
+    if (a.esDeHoy && !b.esDeHoy) return -1;
+    if (!a.esDeHoy && b.esDeHoy) return 1;
+    return (b.ticketCreatedAt || 0) - (a.ticketCreatedAt || 0);
+  });
+
+  appState.gruposAnaKaren = gruposMap;
+  appState.listaGruposAnaKaren = listaGrupos;
+
+  // Métricas generales
+  const totalFolios = todos.length;
+  const totalSolicitudes = listaGrupos.length;
+  const atendidosFolios = todos.filter(it => !!revisados[it.id]?.revisado).length;
+  const pendientesFolios = totalFolios - atendidosFolios;
+
+  const solicitudesAtendidas = listaGrupos.filter(g => g.items.every(it => !!revisados[it.id]?.revisado)).length;
+  const solicitudesPendientes = totalSolicitudes - solicitudesAtendidas;
+
+  if (DOM.metricAnaKarenTotal) DOM.metricAnaKarenTotal.textContent = totalFolios;
+  if (DOM.metricAnaKarenPendientes) DOM.metricAnaKarenPendientes.textContent = pendientesFolios;
+  if (DOM.metricAnaKarenRevisados) DOM.metricAnaKarenRevisados.textContent = atendidosFolios;
+  if (DOM.metricAnaKarenArchivos) DOM.metricAnaKarenArchivos.textContent = totalSolicitudes;
+
+  const subTotal = document.getElementById('subtextAnaKarenTotal');
+  if (subTotal) subTotal.textContent = `${totalSolicitudes} solicitud${totalSolicitudes === 1 ? '' : 'es'}`;
+
+  const subPend = document.getElementById('subtextAnaKarenPendientes');
+  if (subPend) subPend.textContent = `${solicitudesPendientes} solicitud${solicitudesPendientes === 1 ? '' : 'es'} pendiente${solicitudesPendientes === 1 ? '' : 's'}`;
+
+  const subRev = document.getElementById('subtextAnaKarenRevisados');
+  if (subRev) subRev.textContent = `${solicitudesAtendidas} solicitud${solicitudesAtendidas === 1 ? '' : 'es'} atendida${solicitudesAtendidas === 1 ? '' : 's'}`;
 
   if (DOM.badgeAnaKarenHeader) {
-    if (pendientesCount > 0) {
-      DOM.badgeAnaKarenHeader.textContent = pendientesCount;
+    if (pendientesFolios > 0) {
+      DOM.badgeAnaKarenHeader.textContent = pendientesFolios;
       DOM.badgeAnaKarenHeader.classList.remove('hidden');
     } else {
       DOM.badgeAnaKarenHeader.classList.add('hidden');
     }
   }
 
-  actualizarEstilosFiltrosAnaKaren();
+  // Actualizar botones de filtro
+  actualizarEstilosFiltrosAnaKaren(solicitudesPendientes, solicitudesAtendidas, totalSolicitudes);
 
-  // Filtrado de items
-  const filtroTipo = appState.anaKarenFiltroTipo;
+  // Filtrado de grupos
   const filtroEstatus = appState.anaKarenFiltroEstatus;
   const busqueda = (appState.anaKarenBusqueda || '').toLowerCase().trim();
 
-  const filtrados = todos.filter(item => {
-    const esRev = !!revisados[item.id]?.revisado;
+  const gruposFiltrados = listaGrupos.filter(g => {
+    const foliosAtendidosGrupo = g.items.filter(it => !!revisados[it.id]?.revisado).length;
+    const esCompletada = foliosAtendidosGrupo === g.items.length;
 
-    // 1. Filtro por estatus de atención
-    if (filtroEstatus === 'pendientes' && esRev) return false;
-    if (filtroEstatus === 'revisados' && !esRev) return false;
+    // Filtro por estatus de atención
+    if (filtroEstatus === 'pendientes' && esCompletada) return false;
+    if (filtroEstatus === 'revisados' && !esCompletada) return false;
 
-    // 2. Filtro por tipo/categoría de error
-    if (filtroTipo !== 'todos') {
-      if (item.errorCategoria !== filtroTipo && !item.errorTexto.toLowerCase().includes(filtroTipo.toLowerCase())) {
-        return false;
-      }
-    }
-
-    // 3. Buscador en tiempo real
+    // Buscador en tiempo real
     if (busqueda) {
-      const matchFolio = item.folioHit.toLowerCase().includes(busqueda);
-      const matchError = item.errorTexto.toLowerCase().includes(busqueda);
-      const matchContratista = (item.contratistaNombre || '').toLowerCase().includes(busqueda);
-      const matchTicket = item.ticketFolio.toLowerCase().includes(busqueda);
-      const matchTel = item.contratistaTelefono.includes(busqueda);
+      const matchContratista = g.contratista.toLowerCase().includes(busqueda);
+      const matchTel = g.telefono.includes(busqueda);
+      const matchTicket = g.ticketFolio.toLowerCase().includes(busqueda);
+      const matchTurno = g.turnoBadge.toLowerCase().includes(busqueda);
+      const matchFecha = g.fechaTexto.toLowerCase().includes(busqueda);
+      const matchFolio = g.items.some(it => it.folioHit.toLowerCase().includes(busqueda));
 
-      if (!matchFolio && !matchError && !matchContratista && !matchTicket && !matchTel) {
+      if (!matchContratista && !matchTel && !matchTicket && !matchTurno && !matchFecha && !matchFolio) {
         return false;
       }
     }
@@ -2826,21 +2913,22 @@ function renderizarErroresAnaKaren() {
     return true;
   });
 
+  const foliosMostrados = gruposFiltrados.reduce((acc, g) => acc + g.items.length, 0);
   if (DOM.badgeAnaKarenMostrados) {
-    DOM.badgeAnaKarenMostrados.textContent = `${filtrados.length} mostrados`;
+    DOM.badgeAnaKarenMostrados.textContent = `${gruposFiltrados.length} solicitud${gruposFiltrados.length === 1 ? '' : 'es'} (${foliosMostrados} folios)`;
   }
 
   DOM.contenedorErroresAnaKaren.innerHTML = '';
 
-  if (filtrados.length === 0) {
+  if (gruposFiltrados.length === 0) {
     DOM.contenedorErroresAnaKaren.innerHTML = `
       <div class="p-12 text-center text-slate-500 space-y-2">
         <div class="w-12 h-12 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center mx-auto mb-2">
           <i data-lucide="check-check" class="w-6 h-6"></i>
         </div>
-        <p class="font-bold text-sm text-slate-700">No se encontraron errores con los filtros seleccionados.</p>
+        <p class="font-bold text-sm text-slate-700">No se encontraron solicitudes con los filtros seleccionados.</p>
         <p class="text-xs text-slate-400 max-w-sm mx-auto">
-          ${filtroEstatus === 'pendientes' ? '¡Excelente! Todos los errores de este tipo han sido marcados como atendidos o no hay coincidencias.' : 'Ajusta el tipo de error o el término de búsqueda.'}
+          ${filtroEstatus === 'pendientes' ? '¡Excelente! Todas las solicitudes de PIC Móvil han sido atendidas o no hay coincidencias.' : 'Ajusta el filtro de estatus o el término de búsqueda.'}
         </p>
       </div>
     `;
@@ -2848,92 +2936,242 @@ function renderizarErroresAnaKaren() {
     return;
   }
 
-  filtrados.forEach(item => {
-    const esRevisado = !!revisados[item.id]?.revisado;
-    const revInfo = revisados[item.id] || {};
+  gruposFiltrados.forEach(grupo => {
+    const t = grupo.ticket;
+    const totalG = grupo.items.length;
+    const atendidosG = grupo.items.filter(it => !!revisados[it.id]?.revisado).length;
+    const pendientesG = totalG - atendidosG;
+    const todosAtendidos = pendientesG === 0;
+    const parcialAtendido = atendidosG > 0 && !todosAtendidos;
 
-    let fechaStr = '--';
-    if (item.ticketCreatedAt) {
-      const d = new Date(item.ticketCreatedAt * 1000);
-      fechaStr = d.toLocaleDateString('es-MX', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-    }
+    const card = document.createElement('div');
+    card.className = `p-5 hover:bg-slate-50/70 transition-colors ${todosAtendidos ? 'bg-emerald-50/25' : 'bg-white'}`;
 
-    let fechaRevStr = '';
-    if (revInfo.fecha) {
-      const dRev = new Date(revInfo.fecha);
-      fechaRevStr = dRev.toLocaleDateString('es-MX', {
-        day: '2-digit',
-        month: 'short',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-    }
+    card.innerHTML = `
+      <div class="space-y-3">
+        
+        <!-- Encabezado de la Solicitud / Turno -->
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-2 border-b border-slate-100">
+          <div class="flex flex-wrap items-center gap-2">
+            <!-- Badge de Turno -->
+            <span class="px-2.5 py-0.5 rounded-lg text-xs font-black font-mono ${grupo.esDeHoy ? (todosAtendidos ? 'bg-slate-200 text-slate-700' : 'bg-purple-100 text-purple-900 border border-purple-300') : 'bg-slate-100 text-slate-700 border border-slate-200'}">
+              ${grupo.turnoBadge}
+            </span>
 
-    const rowEl = document.createElement('div');
-    rowEl.className = `p-4 sm:p-5 hover:bg-slate-50/80 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4 ${esRevisado ? 'bg-emerald-50/20' : ''}`;
-    
-    rowEl.innerHTML = `
-      <div class="space-y-2 flex-1 min-w-0">
-        <!-- Barra de estado y Folio HIT -->
-        <div class="flex flex-wrap items-center gap-2">
-          <span class="text-sm sm:text-base font-black font-mono text-slate-900 bg-slate-100 px-2.5 py-0.5 rounded-lg border border-slate-200">
-            Folio: ${escapeHTML(item.folioHit)}
-          </span>
-          <span class="px-2.5 py-0.5 rounded-full text-xs font-bold ${esRevisado ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-amber-100 text-amber-800 border border-amber-200'}">
-            ${esRevisado ? '✓ Atendido (TAC)' : '⚡ Pendiente de Revisión'}
-          </span>
-          <span class="text-[11px] font-semibold text-purple-700 bg-purple-50 border border-purple-200 px-2.5 py-0.5 rounded-md">
-            ${escapeHTML(item.errorCategoria)}
+            <!-- Fecha y Día de la Solicitud -->
+            <span class="text-xs text-slate-600 font-semibold flex items-center space-x-1">
+              <i data-lucide="calendar" class="w-3.5 h-3.5 text-purple-600"></i>
+              <span>${escapeHTML(grupo.fechaTexto)}</span>
+            </span>
+
+            <!-- Folio Integra -->
+            <span class="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+              Folio: <strong>${escapeHTML(grupo.ticketFolio)}</strong>
+            </span>
+
+            <!-- Estatus de la Solicitud -->
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-bold ${todosAtendidos ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : (parcialAtendido ? 'bg-purple-100 text-purple-800 border border-purple-200' : 'bg-amber-100 text-amber-800 border border-amber-200 animate-pulse')}">
+              ${todosAtendidos ? `✓ Atendida (${totalG}/${totalG} folios)` : (parcialAtendido ? `⚡ En Proceso (${atendidosG}/${totalG} atendidos)` : `⚡ ${totalG} Folios Pendientes`)}
+            </span>
+          </div>
+
+          <!-- Acciones de la Solicitud (Descargar Excel, Marcar Atendida y Ver Folios) -->
+          <div class="flex flex-wrap items-center gap-2">
+            <!-- Descargar Excel de esta solicitud (Igual que Cristina) -->
+            <button type="button" onclick="descargarExcelTicketKaren('${grupo.ticketId}')"
+              class="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-semibold text-xs shadow-xs transition-colors"
+              title="Descargar archivo Excel con los folios de esta solicitud que tienen error en PIC Móvil">
+              <i data-lucide="download" class="w-3.5 h-3.5"></i>
+              <span>Descargar Excel (${totalG} folios)</span>
+            </button>
+
+            <!-- Marcar todos los folios de este ticket -->
+            <button type="button" onclick="marcarTicketAtendidoKaren('${grupo.ticketId}')"
+              class="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg ${todosAtendidos ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300' : 'bg-purple-600 hover:bg-purple-700 text-white shadow-xs'} font-semibold text-xs transition-colors"
+              title="${todosAtendidos ? 'Revertir todos los folios a estado pendiente' : 'Marcar todos los folios de esta solicitud como atendidos'}">
+              <i data-lucide="${todosAtendidos ? 'rotate-ccw' : 'check-check'}" class="w-3.5 h-3.5"></i>
+              <span>${todosAtendidos ? 'Reabrir' : 'Marcar Atendida'}</span>
+            </button>
+
+            <!-- Desplegable para ver folios individuales -->
+            <button type="button" onclick="toggleDetalleFoliosKaren('${grupo.ticketId}')"
+              class="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition-colors"
+              title="Ver o desglosar los folios individuales de esta solicitud">
+              <span>Folios (${totalG})</span>
+              <i data-lucide="chevron-down" id="iconChevron_${grupo.ticketId}" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Datos del Contratista y Resumen del Error -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs pt-1">
+          <div>
+            <span class="text-slate-400 block text-[10px] uppercase font-semibold">Contratista</span>
+            <strong class="text-slate-900 text-sm">${escapeHTML(grupo.contratista)}</strong>
+          </div>
+          <div>
+            <span class="text-slate-400 block text-[10px] uppercase font-semibold">Teléfono</span>
+            <a href="tel:${grupo.telefono}" class="text-brand-600 hover:underline font-mono">${grupo.telefono || 'Sin teléfono'}</a>
+          </div>
+          <div>
+            <span class="text-slate-400 block text-[10px] uppercase font-semibold">Correo de Notificación</span>
+            <a href="mailto:${grupo.email}" class="text-brand-600 hover:underline truncate block" title="${grupo.email}">${grupo.email || 'Sin correo'}</a>
+          </div>
+        </div>
+
+        <!-- Barra informativa de la Incidencia -->
+        <div class="bg-purple-50/80 border border-purple-200 rounded-xl p-2.5 text-xs text-purple-950 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs">
+          <div class="flex items-center space-x-2">
+            <i data-lucide="alert-triangle" class="w-4 h-4 text-purple-600 shrink-0"></i>
+            <span>
+              <strong>${totalG} folio${totalG === 1 ? '' : 's'}</strong> con la incidencia:
+              <span class="font-semibold text-purple-900">"Verifica que tu folio sea el correcto y se encuentre liquidado completado en PIC Movil"</span>
+            </span>
+          </div>
+          <span class="text-[11px] font-bold ${todosAtendidos ? 'text-emerald-700' : 'text-purple-700'} shrink-0">
+            ${atendidosG} de ${totalG} regularizados (${Math.round((atendidosG / totalG) * 100)}%)
           </span>
         </div>
 
-        <!-- Mensaje de Error en Excel -->
-        <div class="bg-rose-50/90 border border-rose-200 rounded-xl p-3 text-xs text-rose-950 font-mono shadow-2xs">
-          <span class="text-rose-900 font-bold block text-[10px] uppercase tracking-wider mb-0.5">Detalle del Error en Excel:</span>
-          <p class="break-words font-medium leading-relaxed">${escapeHTML(item.errorTexto)}</p>
+        <!-- Detalle Desplegable de Folios Individuales (Acordeón) -->
+        <div id="detalleFolios_${grupo.ticketId}" class="hidden pt-3 border-t border-slate-200/80 space-y-2">
+          <div class="flex items-center justify-between text-xs pb-1">
+            <span class="font-bold text-slate-700">Folios incluidos en esta solicitud:</span>
+            <span class="text-slate-400 text-[11px]">Haz clic en cualquier folio para cambiar su estatus individual</span>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+            ${grupo.items.map(it => {
+              const esRev = !!revisados[it.id]?.revisado;
+              return `
+                <div class="p-2.5 rounded-xl border ${esRev ? 'bg-emerald-50/40 border-emerald-200' : 'bg-slate-50 border-slate-200'} flex items-center justify-between gap-2 text-xs transition-colors">
+                  <div class="min-w-0">
+                    <span class="font-mono font-bold text-slate-900 block truncate">
+                      Folio: ${escapeHTML(it.folioHit)}
+                    </span>
+                    <span class="text-[10px] text-slate-400 block">Fila Excel: #${it.filaExcel}</span>
+                  </div>
+
+                  <button type="button" 
+                    onclick="${esRev ? `desmarcarRevisadoAnaKaren('${it.id}')` : `marcarRevisadoAnaKaren('${it.id}')`}"
+                    class="px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${esRev ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800' : 'bg-purple-600 hover:bg-purple-700 text-white shadow-xs'}"
+                    title="${esRev ? 'Haga clic para desmarcar como pendiente' : 'Haga clic para marcar como atendido'}">
+                    ${esRev ? '✓ Atendido' : 'Marcar'}
+                  </button>
+                </div>
+              `;
+            }).join('')}
+          </div>
         </div>
 
-        <!-- Metadata de Contratista, Ticket Integra y Archivo -->
-        <div class="flex flex-wrap items-center text-xs text-slate-500 gap-x-4 gap-y-1 pt-0.5">
-          <span>👤 Contratista: <strong class="text-slate-700">${escapeHTML(item.contratistaNombre || 'Sin nombre')}</strong> (${escapeHTML(item.contratistaTelefono)})</span>
-          <span>🎫 Ticket: <strong class="font-mono text-slate-700">${escapeHTML(item.ticketFolio)}</strong></span>
-          <span>📅 ${fechaStr}</span>
-          ${item.archivoUrl ? `
-            <a href="${item.archivoUrl}" target="_blank" rel="noopener noreferrer" class="text-purple-600 hover:text-purple-800 hover:underline flex items-center space-x-1 font-semibold" title="Descargar archivo Excel original">
-              <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i>
-              <span>${escapeHTML(item.archivoNombre)} (Fila ${item.filaExcel})</span>
-            </a>
-          ` : ''}
-          ${esRevisado && fechaRevStr ? `<span class="text-emerald-700 font-medium">✓ Atendido el: ${fechaRevStr}</span>` : ''}
-        </div>
-      </div>
-
-      <!-- Botón de Acción Rápida: Marcar Atendido / Volver a Pendiente -->
-      <div class="flex items-center space-x-2 shrink-0 md:self-center">
-        ${esRevisado ? `
-          <button type="button" onclick="desmarcarRevisadoAnaKaren('${item.id}')" class="px-3.5 py-2 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-600 text-xs font-semibold flex items-center space-x-1.5 transition-colors">
-            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
-            <span>Volver a Pendiente</span>
-          </button>
-        ` : `
-          <button type="button" onclick="marcarRevisadoAnaKaren('${item.id}')" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-bold shadow-xs flex items-center space-x-1.5 transition-colors">
-            <i data-lucide="check" class="w-4 h-4"></i>
-            <span>Marcar como Atendido</span>
-          </button>
-        `}
       </div>
     `;
 
-    DOM.contenedorErroresAnaKaren.appendChild(rowEl);
+    DOM.contenedorErroresAnaKaren.appendChild(card);
   });
 
   if (window.lucide) window.lucide.createIcons();
+}
+
+/**
+ * Descarga un archivo Excel exclusivo para una solicitud específica de Karen,
+ * conteniendo únicamente los folios de ese turno que tienen error en PIC Móvil.
+ */
+function descargarExcelTicketKaren(ticketId) {
+  const grupos = appState.gruposAnaKaren || {};
+  const grupo = grupos[ticketId];
+  if (!grupo || !grupo.items || grupo.items.length === 0) {
+    alert('No hay folios de PIC Móvil para descargar en esta solicitud.');
+    return;
+  }
+
+  const revisados = obtenerRevisadosAnaKaren();
+  const filas = [
+    ['Folio HIT', 'Error Detectado', 'Contratista', 'Teléfono', 'Correo', 'Turno / Solicitud', 'Fecha Solicitud', 'Estatus en Revisión TAC']
+  ];
+
+  grupo.items.forEach(it => {
+    const esRev = !!revisados[it.id]?.revisado;
+    filas.push([
+      it.folioHit,
+      it.errorTexto,
+      grupo.contratista,
+      grupo.telefono,
+      grupo.email,
+      grupo.turnoBadge,
+      grupo.fechaTexto,
+      esRev ? 'Atendido en PIC Móvil' : 'Pendiente de Revisión'
+    ]);
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(filas);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Folios PIC Móvil');
+
+  const contratistaSlug = grupo.contratista.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 20);
+  const turnoSlug = grupo.turnoBadge.replace(/[^a-zA-Z0-9]/g, '_');
+  const nombreArchivo = `PIC_Movil_${turnoSlug}_${contratistaSlug}_${grupo.items.length}folios.xlsx`;
+
+  XLSX.writeFile(wb, nombreArchivo);
+  mostrarNotificacionToast(`Excel generado con los ${grupo.items.length} folios de PIC Móvil de ${grupo.contratista}.`);
+}
+
+/**
+ * Alterna la visibilidad del acordeón de folios de una solicitud
+ */
+function toggleDetalleFoliosKaren(ticketId) {
+  const el = document.getElementById(`detalleFolios_${ticketId}`);
+  const icon = document.getElementById(`iconChevron_${ticketId}`);
+  if (!el) return;
+
+  const isHidden = el.classList.contains('hidden');
+  if (isHidden) {
+    el.classList.remove('hidden');
+    if (icon) icon.setAttribute('data-lucide', 'chevron-up');
+  } else {
+    el.classList.add('hidden');
+    if (icon) icon.setAttribute('data-lucide', 'chevron-down');
+  }
+  if (window.lucide) window.lucide.createIcons();
+}
+
+/**
+ * Marca o desmarca todos los folios de una solicitud en bloque
+ */
+function marcarTicketAtendidoKaren(ticketId) {
+  const grupos = appState.gruposAnaKaren || {};
+  const grupo = grupos[ticketId];
+  if (!grupo || !grupo.items) return;
+
+  const revisados = obtenerRevisadosAnaKaren();
+  const pendientes = grupo.items.filter(it => !revisados[it.id]?.revisado);
+
+  if (pendientes.length === 0) {
+    // Si ya todos estaban atendidos, preguntar si desea reabrir
+    if (confirm(`Todos los folios de esta solicitud ya estaban marcados como atendidos.\n\n¿Deseas volver a marcarlos como PENDIENTES?`)) {
+      grupo.items.forEach(it => {
+        delete revisados[it.id];
+      });
+      guardarRevisadosAnaKaren(revisados);
+      renderizarErroresAnaKaren();
+      mostrarNotificacionToast(`Solicitud de ${grupo.contratista} restablecida a pendiente.`);
+    }
+    return;
+  }
+
+  // Marcar todos los folios de este ticket como atendidos
+  const ahora = new Date().toISOString();
+  grupo.items.forEach(it => {
+    revisados[it.id] = {
+      revisado: true,
+      fecha: ahora,
+      usuario: 'Ana Karen'
+    };
+  });
+
+  guardarRevisadosAnaKaren(revisados);
+  renderizarErroresAnaKaren();
+  mostrarNotificacionToast(`Se marcaron como atendidos los ${pendientes.length} folios de PIC Móvil de ${grupo.contratista}.`);
 }
 
 /**
@@ -3099,6 +3337,9 @@ function exportarExcelAnaKaren() {
 // Exponer funciones globales para los eventos onclick en HTML
 window.marcarRevisadoAnaKaren = marcarRevisadoAnaKaren;
 window.desmarcarRevisadoAnaKaren = desmarcarRevisadoAnaKaren;
+window.marcarTicketAtendidoKaren = marcarTicketAtendidoKaren;
+window.descargarExcelTicketKaren = descargarExcelTicketKaren;
+window.toggleDetalleFoliosKaren = toggleDetalleFoliosKaren;
 window.cerrarSesionAnaKaren = cerrarSesionAnaKaren;
 window.cargarErroresAnaKaren = cargarErroresAnaKaren;
 
