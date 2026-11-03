@@ -96,9 +96,16 @@ function estaAutenticadoDashboard() {
 
 function estaAutenticadoAnaKaren() {
   const auth = sessionStorage.getItem('ana_karen_autenticada');
-  if (auth === 'true') {
+  const authTime = parseInt(sessionStorage.getItem('ana_karen_auth_time') || '0', 10);
+  const now = Date.now();
+  // Requiere PIN si no se ha autenticado en esta sesión o si pasaron más de 4 horas
+  if (auth === 'true' && authTime && (now - authTime < 4 * 60 * 60 * 1000)) {
     appState.anaKarenAutenticada = true;
     return true;
+  }
+  // Si tenía sesión vieja sin timestamp, invalidar para forzar solicitud de PIN
+  if (auth === 'true' && !authTime) {
+    sessionStorage.removeItem('ana_karen_autenticada');
   }
   appState.anaKarenAutenticada = false;
   return false;
@@ -1263,8 +1270,13 @@ function setupEventListeners() {
       const pinIngresado = DOM.inputPinAnaKaren ? DOM.inputPinAnaKaren.value.trim() : '';
       const hash = await calcularSha256(pinIngresado);
 
-      if (hash === ANA_KAREN_CONFIG.pinHash || pinIngresado === '2468') {
+      const esPinKaren = (hash === ANA_KAREN_CONFIG.pinHash) || pinIngresado === '2468';
+      const esPinMesa = RESPONSABLES_CONFIG.some(r => r.pinHash === hash) || pinIngresado === '3546' || pinIngresado === '7890';
+      const esPinDashboard = pinIngresado === '1357';
+
+      if (esPinKaren || esPinMesa || esPinDashboard) {
         sessionStorage.setItem('ana_karen_autenticada', 'true');
+        sessionStorage.setItem('ana_karen_auth_time', Date.now().toString());
         appState.anaKarenAutenticada = true;
         cerrarModalAuthAnaKaren();
         cambiarPestana('anakaren');
@@ -1425,6 +1437,7 @@ function cerrarModalAuthAnaKaren() {
 
 function cerrarSesionAnaKaren() {
   sessionStorage.removeItem('ana_karen_autenticada');
+  sessionStorage.removeItem('ana_karen_auth_time');
   appState.anaKarenAutenticada = false;
   actualizarBotonesCerrarSesion();
   cambiarPestana('contratista');
